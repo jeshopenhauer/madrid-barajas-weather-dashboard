@@ -39,12 +39,11 @@ else:
 SAT_DIR = os.path.join(BASE_DIR, "satellite_images")
 
 SAT_TYPES = [
-    ("infrarrojo",  "satellite_images/infrarrojo/infrarrojo_latest.png",   "🛰️ Infrarrojo (IR)"),
-    ("vapor_agua",  "satellite_images/vapor_agua/vapor_agua_latest.png",    "💨 Vapor de Agua"),
-    ("masas_aire",  "satellite_images/masas_aire/masas_aire_latest.png",    "🌈 Masas de Aire"),
-    ("visible_ir",  "satellite_images/visible_ir/visible_ir_latest.png",    "👁️ Visible / IR"),
-    ("masas_aire_gif", "satellite_images/masas_aire_gif/masas_aire_gif_latest.gif", "🎬 Masas de Aire (GIF)"),
-    ("visible_gif",    "satellite_images/visible_gif/visible_gif_latest.gif",       "🎬 Visible (GIF)"),
+    ("infrarrojo_europa",  "satellite_images/infrarrojo_europa/infrarrojo_europa_latest.png",   "🛰️ Infrarrojo Europa"),
+    ("visible_europa",     "satellite_images/visible_europa/visible_europa_latest.png",         "�️ Visible Color Europa"),
+    ("vapor_agua_europa",  "satellite_images/vapor_agua_europa/vapor_agua_europa_latest.png",   "💨 Vapor de Agua Europa"),
+    ("vapor_agua_2_europa", "satellite_images/vapor_agua_2_europa/vapor_agua_2_europa_latest.png", "� Vapor de Agua 2 Europa"),
+    ("masas_aire_europa",  "satellite_images/masas_aire_europa/masas_aire_europa_latest.png",   "� Masas de Aire Europa"),
 ]
 
 # ─── Cola de logs ─────────────────────────────────────────────────────────────
@@ -193,10 +192,6 @@ class Dashboard(tk.Tk):
         self._sat_photo   = None       # referencia PIL → Tk (evita GC)
         self._temp_photo  = None
         self._resize_job  = None       # job pendiente de resize
-        self._gif_job     = None       # job de animación GIF
-        self._gif_frames  = []         # frames del GIF animado
-        self._gif_durations = []       # duraciones de cada frame
-        self._gif_current_frame = 0    # frame actual del GIF
 
         self._build_ui()
         self._start_background_threads()
@@ -322,80 +317,25 @@ class Dashboard(tk.Tk):
             return
 
         try:
-            # Detener animación previa si existe
-            if hasattr(self, '_gif_job') and self._gif_job:
-                self.after_cancel(self._gif_job)
-                self._gif_job = None
-
             # Usar el panel como referencia, no el Label (evita bucle de crecimiento)
             w = self.right_panel.winfo_width()  - 16
             h = self.right_panel.winfo_height() - 70
             if w < 50: w = 480
             if h < 50: h = 380
 
-            # Detectar si es GIF animado
-            is_gif = full_path.lower().endswith('.gif')
-            
-            if is_gif:
-                # Cargar GIF y extraer frames
-                img = Image.open(full_path)
-                self._gif_frames = []
-                self._gif_durations = []
-                
-                try:
-                    frame_idx = 0
-                    while True:
-                        img.seek(frame_idx)
-                        # Redimensionar frame
-                        frame = img.copy().convert("RGBA")
-                        frame = frame.resize((w, h), Image.LANCZOS)
-                        photo = ImageTk.PhotoImage(frame)
-                        self._gif_frames.append(photo)
-                        # Duración del frame (por defecto 100ms si no está definida)
-                        duration = img.info.get('duration', 100)
-                        self._gif_durations.append(duration)
-                        frame_idx += 1
-                except EOFError:
-                    pass  # Fin de frames
-                
-                if self._gif_frames:
-                    self._gif_current_frame = 0
-                    self._animate_gif()
-                    mtime = datetime.fromtimestamp(os.path.getmtime(full_path))
-                    self.sat_status.config(
-                        text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(full_path)//1024} KB  |  {len(self._gif_frames)} frames"
-                    )
-                else:
-                    self.sat_status.config(text="❌ GIF sin frames")
-            else:
-                # Imagen estática (PNG)
-                img   = Image.open(full_path).convert("RGB")
-                img   = img.resize((w, h), Image.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
+            # Cargar imagen PNG
+            img   = Image.open(full_path).convert("RGB")
+            img   = img.resize((w, h), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
 
-                self._sat_photo = photo
-                self.sat_canvas.config(image=photo, text="")
+            self._sat_photo = photo
+            self.sat_canvas.config(image=photo, text="")
 
-                mtime = datetime.fromtimestamp(os.path.getmtime(full_path))
-                self.sat_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(full_path)//1024} KB")
+            mtime = datetime.fromtimestamp(os.path.getmtime(full_path))
+            self.sat_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(full_path)//1024} KB")
                 
         except Exception as e:
             self.sat_status.config(text=f"❌ Error: {e}")
-
-    def _animate_gif(self):
-        """Anima el GIF cambiando de frame"""
-        if not hasattr(self, '_gif_frames') or not self._gif_frames:
-            return
-        
-        # Mostrar frame actual
-        photo = self._gif_frames[self._gif_current_frame]
-        self.sat_canvas.config(image=photo, text="")
-        self._sat_photo = photo  # Mantener referencia
-        
-        # Programar siguiente frame
-        duration = self._gif_durations[self._gif_current_frame]
-        self._gif_current_frame = (self._gif_current_frame + 1) % len(self._gif_frames)
-        self._gif_job = self.after(duration, self._animate_gif)
 
     # ── Temperaturas ──────────────────────────────────────────────────────────
 

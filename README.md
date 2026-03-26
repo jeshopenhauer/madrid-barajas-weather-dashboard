@@ -1,6 +1,6 @@
 # 🌤️ Madrid Barajas Weather Dashboard
 
-Dashboard meteorológico en tiempo real para el Aeropuerto Madrid-Barajas con monitoreo multi-fuente de datos e imágenes satelitales animadas.
+Dashboard meteorológico en tiempo real para el Aeropuerto Madrid-Barajas con monitoreo multi-fuente de datos e imágenes satelitales de Europa.
 
 ## 📋 Características
 
@@ -17,13 +17,12 @@ Dashboard meteorológico en tiempo real para el Aeropuerto Madrid-Barajas con mo
 - **Meteociel** - Web Scraping en tiempo real
 
 ### 🛰️ Imágenes Satelitales
-- **6 tipos de visualizaciones**:
-  - Infrarrojo
-  - Vapor de Agua
-  - Masas de Aire (PNG)
-  - Visible IR
-  - Masas de Aire (GIF Animado)
-  - Visible (GIF Animado)
+- **5 tipos de visualizaciones de Europa (MTG Meteosat)**:
+  - Infrarrojo Europa
+  - Visible Color Europa
+  - Vapor de Agua Europa
+  - Vapor de Agua 2 Europa
+  - Masas de Aire Europa (Airmass RGB)
 
 ### 📊 Gráficos de Temperatura
 - Comparación en tiempo real entre múltiples fuentes
@@ -41,8 +40,8 @@ Dashboard meteorológico en tiempo real para el Aeropuerto Madrid-Barajas con mo
 
 1. **Clonar el repositorio**
 ```bash
-git clone https://github.com/TU_USUARIO/forecast_bot.git
-cd forecast_bot
+git clone https://github.com/jeshopenhauer/madrid-barajas-weather-dashboard.git
+cd madrid-barajas-weather-dashboard
 ```
 
 2. **Crear entorno virtual**
@@ -71,7 +70,6 @@ forecast_bot/
 ├── polymarket_bot.py        # Monitoreo de 9 fuentes de datos
 ├── satellite_images.py      # Descarga de imágenes satelitales
 ├── meteociel_scraper.py     # Scraper para Meteociel
-├── temperature_comparison.py # Comparación de temperaturas
 ├── requirements.txt         # Dependencias Python
 ├── .gitignore
 └── README.md
@@ -85,7 +83,7 @@ python dashboard.py
 ```
 El dashboard mostrará:
 - Terminal en vivo con datos de las 9 fuentes
-- Imágenes satelitales con navegación (←/→)
+- Imágenes satelitales de Europa con navegación (←/→)
 - Gráfico de comparación de temperaturas
 
 ### Solo Monitoreo (Sin GUI)
@@ -100,18 +98,23 @@ python satellite_images.py
 
 ## 🔑 APIs Utilizadas
 
-- **Weather.com API**: Datos oficiales del aeropuerto y estaciones PWS
+- **Weather.com API**: Datos oficiales del aeropuerto y estaciones PWS con precisión decimal
 - **AEMET OpenData**: API oficial del Gobierno de España
-- **Meteociel**: Web scraping para datos en tiempo real
-- **Meteosatonline**: Imágenes satelitales GIF animadas
+- **Meteociel**: Web scraping para datos en tiempo real e imágenes satelitales
+- **MTG Meteosat**: Satélite de tercera generación para imágenes de Europa
 
-## 📸 Capturas de Pantalla
+## 📸 Características Técnicas
 
-### Dashboard Principal
-*Interfaz con terminal, imágenes satelitales y gráficos*
+### Precisión de Datos
+- Todas las estaciones PWS reportan con decimales (9.3°C, 10.5°C, etc.)
+- Parámetro `numericPrecision: decimal` en todas las requests
+- Actualización cada 20 segundos
 
-### Comparación de Temperaturas
-*9 fuentes de datos en tiempo real con diferencias de ±2°C típicamente*
+### Imágenes Satelitales
+- Descarga automática cada 5 minutos
+- Imágenes de alta resolución de toda Europa
+- 5 canales diferentes del satélite MTG Meteosat
+- Navegación con flechas izquierda/derecha
 
 ## 🤝 Contribuir
 
@@ -123,16 +126,36 @@ Las contribuciones son bienvenidas. Por favor:
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
+## 💡 Función Git Rápida
+
+Si clonas este repo, puedes añadir esta función a tu `~/.bashrc`:
+
+```bash
+gitpush() {
+    if [ -z "$1" ]; then
+        echo "❌ Error: Debes proporcionar un mensaje de commit"
+        echo "Uso: gitpush \"tu mensaje de commit\""
+        return 1
+    fi
+    git add .
+    git commit -m "$1"
+    git push
+    echo "✅ ¡Cambios subidos exitosamente!"
+}
+```
+
+Uso: `gitpush "mensaje de commit"`
+
 ## 📝 Notas
 
 - Las estaciones PWS pueden tener ligeras variaciones de temperatura (±1-2°C)
-- AEMET suele reportar temperaturas más altas (sensores oficiales)
-- Las imágenes satelitales se descargan automáticamente cada 15 minutos
-- Los GIFs animados se reproducen automáticamente en el dashboard
+- AEMET suele reportar temperaturas más altas (sensores oficiales del aeropuerto)
+- Las imágenes satelitales se actualizan cada 5 minutos automáticamente
+- Todas las imágenes son de Europa completa (España, Portugal, Francia, Italia, etc.)
 
 ## 📄 Licencia
 
-Este proyecto es de código abierto y está disponible bajo la [MIT License](LICENSE).
+Este proyecto está bajo la licencia MIT. Ver archivo `LICENSE` para más detalles.
 
 ## 👤 Autor
 
@@ -140,10 +163,10 @@ Desarrollado para monitoreo meteorológico en tiempo real del Aeropuerto Madrid-
 
 ## 🙏 Agradecimientos
 
-- Weather.com por su API de datos meteorológicos
-- AEMET por los datos oficiales del gobierno
-- Meteociel por los datos en tiempo real
-- Meteosatonline por las imágenes satelitales
+- Weather.com por su API de datos meteorológicos con precisión decimal
+- AEMET por los datos oficiales del gobierno español
+- Meteociel por los datos en tiempo real e imágenes satelitales
+- EUMETSAT por el satélite MTG Meteosat de tercera generación
 
 ---
 

@@ -20,37 +20,30 @@ class SatelliteImageDownloader:
         
         # URLs de los diferentes tipos de imágenes de satélite
         self.satellite_types = {
-            "infrarrojo": {
-                "url": "https://modeles20.meteociel.fr/satellite/latestsatirmtgsp.png",
-                "description": "Infrarrojo (IR)",
-                "folder": "infrarrojo"
+            "infrarrojo_europa": {
+                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatirmtgeu.png",
+                "description": "Infrarrojo Europa (IR)",
+                "folder": "infrarrojo_europa"
             },
-            "vapor_agua": {
-                "url": "https://modeles20.meteociel.fr/satellite/latestsatwvmtgsp.png",
-                "description": "Vapor de Agua (WV)",
-                "folder": "vapor_agua"
+            "visible_europa": {
+                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatviscolmtgeu.png",
+                "description": "Visible Color Europa",
+                "folder": "visible_europa"
             },
-            "masas_aire": {
-                "url": "https://modeles20.meteociel.fr/satellite/latestsatairmassrgbmtgsp.png",
-                "description": "Masas de Aire (Airmass RGB)",
-                "folder": "masas_aire"
+            "vapor_agua_europa": {
+                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatwvmtgeu.png",
+                "description": "Vapor de Agua Europa (WV)",
+                "folder": "vapor_agua_europa"
             },
-            "visible_ir": {
-                "url": "https://modeles20.meteociel.fr/satellite/latestsatsandvisirmtgsp.png",
-                "description": "Sandwich Visible/IR",
-                "folder": "visible_ir"
+            "vapor_agua_2_europa": {
+                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatwv2mtgeu.png",
+                "description": "Vapor de Agua 2 Europa (WV2)",
+                "folder": "vapor_agua_2_europa"
             },
-            "masas_aire_gif": {
-                "url": "https://www.meteosatonline.it/anim2022/espana_masse.php",
-                "description": "Masas de Aire (GIF animado)",
-                "folder": "masas_aire_gif",
-                "is_gif": True
-            },
-            "visible_gif": {
-                "url": "https://www.meteosatonline.it/anim2022/espana_visibile.php",
-                "description": "Visible (GIF animado)",
-                "folder": "visible_gif",
-                "is_gif": True
+            "masas_aire_europa": {
+                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatairmassrgbmtgeu.png",
+                "description": "Masas de Aire Europa (Airmass RGB)",
+                "folder": "masas_aire_europa"
             }
         }
         
@@ -73,53 +66,28 @@ class SatelliteImageDownloader:
             
             print(f"[{time_display}] 📡 Descargando {info['description']}...")
             
-            # Si es GIF, la URL PHP genera el GIF directamente (no es HTML)
-            if info.get('is_gif', False):
-                response = requests.get(info['url'], headers=self.headers, timeout=15)
-                if response.status_code == 200:
-                    # Verificar que sea un GIF válido
-                    if response.content[:3] == b'GIF':
-                        folder_path = os.path.join(self.base_dir, info['folder'])
-                        latest_filename = f"{sat_type}_latest.gif"
-                        latest_path = os.path.join(folder_path, latest_filename)
-                        
-                        with open(latest_path, 'wb') as f:
-                            f.write(response.content)
-                        
-                        size_kb = len(response.content) / 1024
-                        print(f"[{time_display}] ✅ {info['description']} descargado ({size_kb:.1f} KB)")
-                        print(f"             └─ Guardado en: {latest_path}")
-                        return True
-                    else:
-                        print(f"[{time_display}] ❌ La respuesta no es un GIF válido")
-                        print(f"             └─ Primeros bytes: {response.content[:20]}")
-                        return False
-                else:
-                    print(f"[{time_display}] ❌ Error descargando GIF: HTTP {response.status_code}")
-                    return False
-            else:
-                # Descarga normal de PNG
-                response = requests.get(info['url'], headers=self.headers, timeout=15)
+            # Descarga de imagen PNG
+            response = requests.get(info['url'], headers=self.headers, timeout=15)
+            
+            if response.status_code == 200:
+                # Rutas para guardar
+                folder_path = os.path.join(self.base_dir, info['folder'])
                 
-                if response.status_code == 200:
-                    # Rutas para guardar
-                    folder_path = os.path.join(self.base_dir, info['folder'])
-                    
-                    # Guardar solo imagen "latest" (siempre se sobrescribe)
-                    latest_filename = f"{sat_type}_latest.png"
-                    latest_path = os.path.join(folder_path, latest_filename)
-                    
-                    # Escribir la imagen (solo una copia)
-                    with open(latest_path, 'wb') as f:
-                        f.write(response.content)
-                    
-                    size_kb = len(response.content) / 1024
-                    print(f"[{time_display}] ✅ {info['description']} descargada ({size_kb:.1f} KB)")
-                    print(f"             └─ Guardada en: {latest_path}")
-                    return True
-                else:
-                    print(f"[{time_display}] ❌ Error descargando {info['description']}: HTTP {response.status_code}")
-                    return False
+                # Guardar solo imagen "latest" (siempre se sobrescribe)
+                latest_filename = f"{sat_type}_latest.png"
+                latest_path = os.path.join(folder_path, latest_filename)
+                
+                # Escribir la imagen (solo una copia)
+                with open(latest_path, 'wb') as f:
+                    f.write(response.content)
+                
+                size_kb = len(response.content) / 1024
+                print(f"[{time_display}] ✅ {info['description']} descargada ({size_kb:.1f} KB)")
+                print(f"             └─ Guardada en: {latest_path}")
+                return True
+            else:
+                print(f"[{time_display}] ❌ Error descargando {info['description']}: HTTP {response.status_code}")
+                return False
                 
         except Exception as e:
             time_display = datetime.now().strftime('%H:%M:%S')

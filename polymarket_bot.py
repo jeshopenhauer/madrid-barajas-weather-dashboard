@@ -6,7 +6,7 @@ COMPARANDO 9 FUENTES:
   2. PWS 1 - Estación Personal (IMADRI133)
   3. PWS 2 - Estación Personal (IMADRI265)
   4. PWS 3 - Estación Personal (IMADRI56)
-  5. PWS 4 - Estación Personal (IMADRI883 - Timón)
+
   6. PWS 5 - Estación Personal (IMADRI364 - Alameda de Osuna)
   7. PWS 6 - Estación Personal (IMADRI882 - Alameda de Osuna)
   8. AEMET OpenData (Oficial Gobierno España)
@@ -65,14 +65,7 @@ class PolymarketWeatherBot:
             "numericPrecision": "decimal"
         }
         
-        # PWS 4: IMADRI883 (Timón)
-        self.pws4_params = {
-            "apiKey": self.api_key,
-            "stationId": "IMADRI883",  # Timón
-            "units": "m",
-            "format": "json",
-            "numericPrecision": "decimal"
-        }
+
         
         # PWS 5: IMADRI364 (Alameda de Osuna)
         self.pws5_params = {
@@ -199,28 +192,7 @@ class PolymarketWeatherBot:
         except Exception as e:
             return None
     
-    def get_pws4_temperature(self):
-        """Obtiene la temperatura de PWS4 - IMADRI883 (Timón)"""
-        try:
-            response = requests.get(self.url, params=self.pws4_params, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'observations' in data and len(data['observations']) > 0:
-                obs = data['observations'][0]
-                metric = obs.get('metric', {})
-                
-                return {
-                    "temperature": metric.get("temp"),
-                    "humidity": obs.get("humidity"),
-                    "pressure": metric.get("pressure"),
-                    "wind_speed": metric.get("windSpeed"),
-                    "timestamp": obs.get("obsTimeLocal"),
-                    "station_id": obs.get("stationID"),
-                }
-            return None
-        except Exception as e:
-            return None
+    
     
     def get_pws5_temperature(self):
         """Obtiene la temperatura de PWS5 - IMADRI364 (Alameda de Osuna)"""
@@ -374,7 +346,7 @@ class PolymarketWeatherBot:
     
     
     
-    def print_status(self, weather_data, pws_data, pws2_data, pws3_data, pws4_data, pws5_data, pws6_data, aemet_data, meteociel_data):
+    def print_status(self, weather_data, pws_data, pws2_data, pws3_data, pws5_data, pws6_data, aemet_data, meteociel_data):
         """Imprime el estado actual en tiempo real de las 9 APIs"""
         now = datetime.now().strftime('%H:%M:%S')
         
@@ -435,20 +407,7 @@ class PolymarketWeatherBot:
         else:
             print(f"[{now}]  (IMADRI56) | ❌ Sin datos", flush=True)
         
-        # Línea 5: PWS 4 (IMADRI883 - Timón)
-        if pws4_data:
-            temp = pws4_data.get('temperature')
-            hum = pws4_data.get('humidity')
-            wind = pws4_data.get('wind_speed')
-            station = pws4_data.get('station_id', 'N/A')
-            
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
-            
-            print(f"[{now}]  ({station}) |   {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
-        else:
-            print(f"[{now}]  (IMADRI883)| ❌ Sin datos", flush=True)
+
         
         # Línea 6: PWS 5 (IMADRI364 - Alameda de Osuna)
         if pws5_data:
@@ -520,11 +479,10 @@ class PolymarketWeatherBot:
         print(f"API 2: PWS 1 - Estación Personal (IMADRI133)", flush=True)
         print(f"API 3: PWS 2 - Estación Personal (IMADRI265)", flush=True)
         print(f"API 4: PWS 3 - Estación Personal (IMADRI56)", flush=True)
-        print(f"API 5: PWS 4 - Estación Personal (IMADRI883 - Timón)", flush=True)
-        print(f"API 6: PWS 5 - Estación Personal (IMADRI364 - Alameda de Osuna)", flush=True)
-        print(f"API 7: PWS 6 - Estación Personal (IMADRI882 - Alameda de Osuna)", flush=True)
-        print(f"API 8: AEMET OpenData (Oficial Gobierno España - Estación 3129)", flush=True)
-        print(f"API 9: Meteociel (Web Scraping - Tiempo Real)", flush=True)
+        print(f"API 5: PWS 5 - Estación Personal (IMADRI364 - Alameda de Osuna)", flush=True)
+        print(f"API 6: PWS 6 - Estación Personal (IMADRI882 - Alameda de Osuna)", flush=True)
+        print(f"API 7: AEMET OpenData (Oficial Gobierno España - Estación 3129)", flush=True)
+        print(f"API 8: Meteociel (Web Scraping - Tiempo Real)", flush=True)
         print(f"Intervalo: {interval} segundos\n", flush=True)
         print(f"{'='*80}\n", flush=True)
         
@@ -536,13 +494,12 @@ class PolymarketWeatherBot:
                 pws_data       = self.get_pws_temperature()
                 pws2_data      = self.get_pws2_temperature()
                 pws3_data      = self.get_pws3_temperature()
-                pws4_data      = self.get_pws4_temperature()
                 pws5_data      = self.get_pws5_temperature()
                 pws6_data      = self.get_pws6_temperature()
                 aemet_data     = self.get_aemet_temperature()
                 meteociel_data = self.get_meteociel_temperature()
-                
-                self.print_status(weather_data, pws_data, pws2_data, pws3_data, pws4_data, pws5_data, pws6_data, aemet_data, meteociel_data)
+
+                self.print_status(weather_data, pws_data, pws2_data, pws3_data, pws5_data, pws6_data, aemet_data, meteociel_data)
                 print(f"\n{'='*80}", flush=True)
                 time.sleep(interval)
                 
