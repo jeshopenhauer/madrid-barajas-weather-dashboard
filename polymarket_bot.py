@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """
-Bot de Trading para Polymarket - Monitoreando Weather en Madrid Barajas
-COMPARANDO 9 FUENTES:
+Bot de Trading para Polymarket - Monitoreando  Weather en Madrid Barajas
+COMPARANDO 5 FUENTES:
   1. Weather.com API (ICAO LEMD)
-  2. PWS 1 - Estación Personal (IMADRI133)
-  3. PWS 2 - Estación Personal (IMADRI265)
-  4. PWS 3 - Estación Personal (IMADRI56)
-
-  6. PWS 5 - Estación Personal (IMADRI364 - Alameda de Osuna)
-  7. PWS 6 - Estación Personal (IMADRI882 - Alameda de Osuna)
-  8. AEMET OpenData (Oficial Gobierno España)
-  9. Meteociel (Web Scraping - Tiempo Real)
+  2. PWS - Estación Personal IMADRI133
+  3. PWS - Estación Personal IMADRI265
+  4. AEMET OpenData (Oficial Gobierno España)
+  5. Meteociel (Web Scraping - Tiempo Real)
 """
 
 import requests
@@ -19,6 +15,12 @@ from datetime import datetime, timedelta
 import time
 import sys
 from bs4 import BeautifulSoup
+import matplotlib
+matplotlib.use('Agg')  # Backend sin ventana
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from collections import defaultdict
+import os
 
 # Forzar stdout sin buffer para que el dashboard lo reciba en tiempo real
 sys.stdout.reconfigure(line_buffering=True)
@@ -36,50 +38,23 @@ class PolymarketWeatherBot:
             "format": "json"
         }
         
-        # PWS 1: IMADRI133
+        # USAR ENDPOINT DE LA ESTACIÓN PERSONAL (PWS)
         self.api_key = "e1f10a1e78da46f5b10a1e78da96f525"
         self.url = "https://api.weather.com/v2/pws/observations/current"
-        self.params = {
+        
+        # Estación PWS 1
+        self.params_pws1 = {
             "apiKey": self.api_key,
-            "stationId": "IMADRI133",  # Estación personal en Barajas
+            "stationId": "IMADRI133",  # Estación personal 1 en Barajas
             "units": "m",              # 'm' para métrico (Celsius, km/h, etc.)
             "format": "json",
             "numericPrecision": "decimal"
         }
         
-        # PWS 2: IMADRI265
-        self.pws2_params = {
+        # Estación PWS 2
+        self.params_pws2 = {
             "apiKey": self.api_key,
-            "stationId": "IMADRI265",  # Segunda estación personal en Barajas
-            "units": "m",
-            "format": "json",
-            "numericPrecision": "decimal"
-        }
-        
-        # PWS 3: IMADRI56
-        self.pws3_params = {
-            "apiKey": self.api_key,
-            "stationId": "IMADRI56",  # Tercera estación personal en Madrid
-            "units": "m",
-            "format": "json",
-            "numericPrecision": "decimal"
-        }
-        
-
-        
-        # PWS 5: IMADRI364 (Alameda de Osuna)
-        self.pws5_params = {
-            "apiKey": self.api_key,
-            "stationId": "IMADRI364",  # Alameda de Osuna
-            "units": "m",
-            "format": "json",
-            "numericPrecision": "decimal"
-        }
-        
-        # PWS 6: IMADRI882 (Alameda de Osuna)
-        self.pws6_params = {
-            "apiKey": self.api_key,
-            "stationId": "IMADRI882",  # Alameda de Osuna
+            "stationId": "IMADRI265",  # Estación personal 2 en Barajas
             "units": "m",
             "format": "json",
             "numericPrecision": "decimal"
@@ -103,6 +78,19 @@ class PolymarketWeatherBot:
         # Estado
         self.update_count = 0
         
+        # Último dato de cada fuente (NO acumulativo)
+        self.latest_data = {
+            'weather_com': {'time': None, 'temp': None},
+            'pws1': {'time': None, 'temp': None},
+            'pws2': {'time': None, 'temp': None},
+            'aemet': {'time': None, 'temp': None},
+            'meteociel': {'time': None, 'temp': None}
+        }
+        
+        # Directorio para guardar el gráfico
+        self.output_dir = os.path.dirname(os.path.abspath(__file__))
+        self.plot_path = os.path.join(self.output_dir, "temperature_plot.png")
+        
     def get_weather_com_temperature(self):
         """Obtiene la temperatura de Weather.com API"""
         try:
@@ -112,6 +100,7 @@ class PolymarketWeatherBot:
             
             return {
                 "temperature": data.get("temperature"),
+                
                 "humidity": data.get("relativeHumidity"),
                 "pressure": data.get("pressureAltimeter"),
                 "wind_speed": data.get("windSpeed"),
@@ -120,10 +109,10 @@ class PolymarketWeatherBot:
         except Exception as e:
             return None
     
-    def get_pws_temperature(self):
-        """Obtiene la temperatura de la Estación Personal (PWS)"""
+    def get_pws_temperature(self, params):
+        """Obtiene la temperatura de una Estación Personal (PWS)"""
         try:
-            response = requests.get(self.url, params=self.params, timeout=5)
+            response = requests.get(self.url, params=params, timeout=5)
             response.raise_for_status()
             data = response.json()
             
@@ -134,102 +123,7 @@ class PolymarketWeatherBot:
                 
                 return {
                     "temperature": metric.get("temp"),
-                    "humidity": obs.get("humidity"),
-                    "pressure": metric.get("pressure"),
-                    "wind_speed": metric.get("windSpeed"),
-                    "timestamp": obs.get("obsTimeLocal"),
-                    "station_id": obs.get("stationID"),
-                }
-            return None
-        except Exception as e:
-            return None
-    
-    def get_pws2_temperature(self):
-        """Obtiene la temperatura de la Segunda Estación Personal (PWS2 - IMADRID265)"""
-        try:
-            response = requests.get(self.url, params=self.pws2_params, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            
-            # La estructura de la respuesta de PWS es diferente
-            if 'observations' in data and len(data['observations']) > 0:
-                obs = data['observations'][0]
-                metric = obs.get('metric', {})
-                
-                return {
-                    "temperature": metric.get("temp"),
-                    "humidity": obs.get("humidity"),
-                    "pressure": metric.get("pressure"),
-                    "wind_speed": metric.get("windSpeed"),
-                    "timestamp": obs.get("obsTimeLocal"),
-                    "station_id": obs.get("stationID"),
-                }
-            return None
-        except Exception as e:
-            return None
-    
-    def get_pws3_temperature(self):
-        """Obtiene la temperatura de la Tercera Estación Personal (PWS3 - IMADRI56)"""
-        try:
-            response = requests.get(self.url, params=self.pws3_params, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            
-            # La estructura de la respuesta de PWS es diferente
-            if 'observations' in data and len(data['observations']) > 0:
-                obs = data['observations'][0]
-                metric = obs.get('metric', {})
-                
-                return {
-                    "temperature": metric.get("temp"),
-                    "humidity": obs.get("humidity"),
-                    "pressure": metric.get("pressure"),
-                    "wind_speed": metric.get("windSpeed"),
-                    "timestamp": obs.get("obsTimeLocal"),
-                    "station_id": obs.get("stationID"),
-                }
-            return None
-        except Exception as e:
-            return None
-    
-    
-    
-    def get_pws5_temperature(self):
-        """Obtiene la temperatura de PWS5 - IMADRI364 (Alameda de Osuna)"""
-        try:
-            response = requests.get(self.url, params=self.pws5_params, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'observations' in data and len(data['observations']) > 0:
-                obs = data['observations'][0]
-                metric = obs.get('metric', {})
-                
-                return {
-                    "temperature": metric.get("temp"),
-                    "humidity": obs.get("humidity"),
-                    "pressure": metric.get("pressure"),
-                    "wind_speed": metric.get("windSpeed"),
-                    "timestamp": obs.get("obsTimeLocal"),
-                    "station_id": obs.get("stationID"),
-                }
-            return None
-        except Exception as e:
-            return None
-    
-    def get_pws6_temperature(self):
-        """Obtiene la temperatura de PWS6 - IMADRI882 (Alameda de Osuna)"""
-        try:
-            response = requests.get(self.url, params=self.pws6_params, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'observations' in data and len(data['observations']) > 0:
-                obs = data['observations'][0]
-                metric = obs.get('metric', {})
-                
-                return {
-                    "temperature": metric.get("temp"),
+                  
                     "humidity": obs.get("humidity"),
                     "pressure": metric.get("pressure"),
                     "wind_speed": metric.get("windSpeed"),
@@ -270,6 +164,7 @@ class PolymarketWeatherBot:
                 
                 return {
                     "temperature": obs.get("ta"),
+                   
                     "humidity": obs.get("hr"),
                     "pressure": obs.get("pres"),
                     "wind_speed": obs.get("vv"),
@@ -332,6 +227,7 @@ class PolymarketWeatherBot:
                                 
                                 all_data.append({
                                     "temperature": temp,
+                                    
                                     "humidity": humidity,
                                     "wind_speed": wind,
                                     "timestamp": hora_local.strftime("%H:%M"),
@@ -344,10 +240,105 @@ class PolymarketWeatherBot:
         except Exception as e:
             return None
     
+    def update_latest_data(self, source, temp, timestamp=None):
+        """Actualiza el último dato de una fuente (NO acumulativo)"""
+        if temp is None:
+            return
+        
+        if timestamp is None:
+            timestamp = datetime.now()
+        elif isinstance(timestamp, str):
+            # Convertir string "HH:MM" a datetime de hoy
+            try:
+                hour, minute = map(int, timestamp.split(':'))
+                timestamp = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+            except:
+                timestamp = datetime.now()
+        
+        self.latest_data[source]['time'] = timestamp
+        self.latest_data[source]['temp'] = temp
+    
+    def generate_plot(self):
+        """Genera el gráfico de temperaturas (último punto de cada fuente)"""
+        try:
+            plt.figure(figsize=(10, 6))
+            
+            # Colores y símbolos para cada fuente
+            colors = {
+                'weather_com': '#FF6B6B',
+                'pws1': '#4ECDC4',
+                'pws2': '#45B7D1',
+                'aemet': '#96CEB4',
+                'meteociel': '#9B59B6'
+            }
+            
+            labels = {
+                'weather_com': 'Weather.com',
+                'pws1': 'IMADRI133',
+                'pws2': 'IMADRI265',
+                'aemet': 'AEMET',
+                'meteociel': 'Meteociel'
+            }
+            
+            markers = {
+                'weather_com': 'o',
+                'pws1': 's',
+                'pws2': '^',
+                'aemet': 'D',
+                'meteociel': 'v'
+            }
+            
+            # Plotear cada fuente (solo último punto)
+            for source, data in self.latest_data.items():
+                if data['time'] is not None and data['temp'] is not None:
+                    plt.scatter(data['time'], data['temp'], 
+                              marker=markers[source], s=200, 
+                              color=colors[source], label=labels[source], 
+                              alpha=0.8, edgecolors='black', linewidth=1.5, zorder=5)
+                    
+                    # Añadir etiqueta con valor
+                    plt.annotate(f"{data['temp']:.1f}°C", 
+                               (data['time'], data['temp']),
+                               textcoords="offset points", 
+                               xytext=(0, 10), 
+                               ha='center', 
+                               fontsize=9,
+                               fontweight='bold',
+                               bbox=dict(boxstyle='round,pad=0.3', 
+                                       facecolor=colors[source], 
+                                       alpha=0.3))
+            
+            plt.xlabel('Hora de Lectura (UTC+1)', fontsize=11)
+            plt.ylabel('Temperatura (°C)', fontsize=11)
+            plt.title('Últimas Lecturas de Temperatura - Madrid Barajas\n5 Fuentes en Tiempo Real', 
+                     fontsize=13, fontweight='bold')
+            plt.legend(loc='best', fontsize=10, framealpha=0.9)
+            plt.grid(True, alpha=0.3, linestyle='--')
+            
+            # Formato del eje X (tiempo)
+            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            plt.gca().xaxis.set_major_locator(mdates.MinuteLocator(interval=10))
+            plt.gcf().autofmt_xdate()  # Rotar etiquetas
+            
+            # Añadir rango al eje Y con margen
+            temps = [d['temp'] for d in self.latest_data.values() if d['temp'] is not None]
+            if temps:
+                min_temp, max_temp = min(temps), max(temps)
+                margin = (max_temp - min_temp) * 0.15 or 1
+                plt.ylim(min_temp - margin, max_temp + margin)
+            
+            plt.tight_layout()
+            plt.savefig(self.plot_path, dpi=100, bbox_inches='tight')
+            plt.close()
+            
+            print(f"📊 Gráfico actualizado: {self.plot_path}", flush=True)
+        except Exception as e:
+            print(f"❌ Error generando gráfico: {e}", flush=True)
     
     
-    def print_status(self, weather_data, pws_data, pws2_data, pws3_data, pws5_data, pws6_data, aemet_data, meteociel_data):
-        """Imprime el estado actual en tiempo real de las 9 APIs"""
+    
+    def print_status(self, weather_data, pws1_data, pws2_data, aemet_data, meteociel_data):
+        """Imprime el estado actual en tiempo real de las 5 APIs"""
         now = datetime.now().strftime('%H:%M:%S')
         
         # Línea 1: Weather.com
@@ -355,135 +346,93 @@ class PolymarketWeatherBot:
             temp = weather_data.get('temperature')
             hum = weather_data.get('humidity')
             wind = weather_data.get('wind_speed')
-            print(f"[{now}] Weather.com  |   {temp:>3}°C | 💧 {hum:>3}% | 💨 {wind:>3} km/h", flush=True)
+            
+            temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
+            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
+            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
+            
+            print(f"[{now}] Weather.com  | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
         else:
             print(f"[{now}] Weather.com  | ❌ Sin datos", flush=True)
         
         # Línea 2: PWS 1 (IMADRI133)
-        if pws_data:
-            temp = pws_data.get('temperature')
-         
-            hum = pws_data.get('humidity')
-            wind = pws_data.get('wind_speed')
-            station = pws_data.get('station_id', 'N/A')
+        if pws1_data:
+            temp = pws1_data.get('temperature')
             
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
+            hum = pws1_data.get('humidity')
+            wind = pws1_data.get('wind_speed')
+            station = pws1_data.get('station_id', 'N/A')
+            
+            temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
+           
             hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
-            
-            print(f"[{now}]  ({station}) |   {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
+
+            print(f"[{now}] {station} | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
         else:
-            print(f"[{now}]  (IMADRI133)| ❌ Sin datos", flush=True)
+            print(f"[{now}] IMADRI133 | ❌ Sin datos", flush=True)
         
-        # Línea 3: PWS 2 (IMADRID265)
+        # Línea 3: PWS 2 (IMADRI265)
         if pws2_data:
             temp = pws2_data.get('temperature')
-          
+            
             hum = pws2_data.get('humidity')
             wind = pws2_data.get('wind_speed')
             station = pws2_data.get('station_id', 'N/A')
             
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
+            temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
+           
             hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
-            
-            print(f"[{now}]  ({station}) |   {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
-        else:
-            print(f"[{now}]  (IMADRI265)| ❌ Sin datos", flush=True)
-        
-        # Línea 4: PWS 3 (IMADRI56)
-        if pws3_data:
-            temp = pws3_data.get('temperature')
-            
-            hum = pws3_data.get('humidity')
-            wind = pws3_data.get('wind_speed')
-            station = pws3_data.get('station_id', 'N/A')
-            
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
-            
-            print(f"[{now}]  ({station})  |   {temp_str}  | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
-        else:
-            print(f"[{now}]  (IMADRI56) | ❌ Sin datos", flush=True)
-        
+            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
 
-        
-        # Línea 6: PWS 5 (IMADRI364 - Alameda de Osuna)
-        if pws5_data:
-            temp = pws5_data.get('temperature')
-            hum = pws5_data.get('humidity')
-            wind = pws5_data.get('wind_speed')
-            station = pws5_data.get('station_id', 'N/A')
-            
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
-            
-            print(f"[{now}]  ({station}) |   {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            print(f"[{now}] {station} | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
         else:
-            print(f"[{now}]  (IMADRI364)| ❌ Sin datos", flush=True)
+            print(f"[{now}] IMADRI265 | ❌ Sin datos", flush=True)
         
-        # Línea 7: PWS 6 (IMADRI882 - Alameda de Osuna)
-        if pws6_data:
-            temp = pws6_data.get('temperature')
-            hum = pws6_data.get('humidity')
-            wind = pws6_data.get('wind_speed')
-            station = pws6_data.get('station_id', 'N/A')
-            
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
-            
-            print(f"[{now}]  ({station}) |   {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
-        else:
-            print(f"[{now}]  (IMADRI882)| ❌ Sin datos", flush=True)
-        
-        # Línea 8: AEMET
+        # Línea 4: AEMET
         if aemet_data:
             temp = aemet_data.get('temperature')
-            
+           
             hum = aemet_data.get('humidity')
             wind = aemet_data.get('wind_speed')
             
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
-            hum_str = f"{hum:>3.0f}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>5.1f}" if wind is not None else "  N/A"
+            temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
             
-            print(f"[{now}] AEMET        |   {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            hum_str = f"{hum:>3.0f}%" if hum is not None else " N/A"
+            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
+            
+            print(f"[{now}] AEMET       | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
         else:
-            print(f"[{now}] AEMET        | ❌ Sin datos", flush=True)
+            print(f"[{now}] AEMET       | ❌ Sin datos", flush=True)
         
-        # Línea 9: Meteociel
+        # Línea 5: Meteociel
         if meteociel_data:
             temp = meteociel_data.get('temperature')
             hum = meteociel_data.get('humidity')
             wind = meteociel_data.get('wind_speed')
             timestamp = meteociel_data.get('timestamp', '')
             
-            temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
+            temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
             hum_str = f"{hum:>3}%" if hum is not None else " N/A"
             wind_str = f"{wind:>3}" if wind is not None else " N/A"
             
-            print(f"[{now}] Meteociel    |   {temp_str} | Hora: {timestamp:>5} | 💧 {hum_str} ", flush=True)
+            print(f"[ {timestamp:>5}] Meteociel   | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
         else:
-            print(f"[{now}] Meteociel    | ❌ Sin datos", flush=True)
+            print(f"[{now}] Meteociel   | ❌ Sin datos", flush=True)
         
         print(flush=True)  # Línea en blanco para separar
     
     def monitor(self, interval=20):
         print(f"\n{'='*80}", flush=True)
-        print(f"MONITOREO 9 FUENTES - AEROPUERTO MADRID-BARAJAS", flush=True)
+        print(f"MONITOREO 5 FUENTES - AEROPUERTO MADRID-BARAJAS", flush=True)
         print(f"{'='*80}", flush=True)
         print(f"API 1: Weather.com (ICAO LEMD)", flush=True)
-        print(f"API 2: PWS 1 - Estación Personal (IMADRI133)", flush=True)
-        print(f"API 3: PWS 2 - Estación Personal (IMADRI265)", flush=True)
-        print(f"API 4: PWS 3 - Estación Personal (IMADRI56)", flush=True)
-        print(f"API 5: PWS 5 - Estación Personal (IMADRI364 - Alameda de Osuna)", flush=True)
-        print(f"API 6: PWS 6 - Estación Personal (IMADRI882 - Alameda de Osuna)", flush=True)
-        print(f"API 7: AEMET OpenData (Oficial Gobierno España - Estación 3129)", flush=True)
-        print(f"API 8: Meteociel (Web Scraping - Tiempo Real)", flush=True)
+        print(f"API 2: PWS - Estación Personal IMADRI133", flush=True)
+        print(f"API 3: PWS - Estación Personal IMADRI265", flush=True)
+        print(f"API 4: AEMET OpenData (Oficial Gobierno España - Estación 3129)", flush=True)
+        print(f"API 5: Meteociel (Web Scraping - Tiempo Real)", flush=True)
         print(f"Intervalo: {interval} segundos\n", flush=True)
+        print(f"Gráfico: {self.plot_path}", flush=True)
         print(f"{'='*80}\n", flush=True)
         
         try:
@@ -491,20 +440,37 @@ class PolymarketWeatherBot:
                 self.update_count += 1
                 
                 weather_data   = self.get_weather_com_temperature()
-                pws_data       = self.get_pws_temperature()
-                pws2_data      = self.get_pws2_temperature()
-                pws3_data      = self.get_pws3_temperature()
-                pws5_data      = self.get_pws5_temperature()
-                pws6_data      = self.get_pws6_temperature()
+                pws1_data      = self.get_pws_temperature(self.params_pws1)
+                pws2_data      = self.get_pws_temperature(self.params_pws2)
                 aemet_data     = self.get_aemet_temperature()
                 meteociel_data = self.get_meteociel_temperature()
-
-                self.print_status(weather_data, pws_data, pws2_data, pws3_data, pws5_data, pws6_data, aemet_data, meteociel_data)
+                
+                # Actualizar últimos datos
+                if weather_data:
+                    self.update_latest_data('weather_com', weather_data.get('temperature'))
+                if pws1_data:
+                    self.update_latest_data('pws1', pws1_data.get('temperature'))
+                if pws2_data:
+                    self.update_latest_data('pws2', pws2_data.get('temperature'))
+                if aemet_data:
+                    self.update_latest_data('aemet', aemet_data.get('temperature'))
+                if meteociel_data:
+                    # Usar el timestamp de Meteociel si está disponible
+                    self.update_latest_data('meteociel', 
+                                          meteociel_data.get('temperature'),
+                                          meteociel_data.get('timestamp'))
+                
+                # Generar gráfico cada actualización
+                self.generate_plot()
+                
+                self.print_status(weather_data, pws1_data, pws2_data, aemet_data, meteociel_data)
                 print(f"\n{'='*80}", flush=True)
                 time.sleep(interval)
                 
         except KeyboardInterrupt:
             print(f"\n\nBot detenido.\n", flush=True)
+            # Generar gráfico final
+            self.generate_plot()
             sys.exit(0)
         
 

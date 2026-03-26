@@ -18,32 +18,48 @@ class SatelliteImageDownloader:
         # Crear directorio base si no existe
         os.makedirs(self.base_dir, exist_ok=True)
         
-        # URLs de los diferentes tipos de imágenes de satélite
+        # URLs de los diferentes tipos de imágenes de satélite (8 canales)
+        # Usar URLs directas de modeles20.meteociel.fr
         self.satellite_types = {
-            "infrarrojo_europa": {
-                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatirmtgeu.png",
-                "description": "Infrarrojo Europa (IR)",
-                "folder": "infrarrojo_europa"
+            "infrarrojo_sp": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatirmtgsp.png",
+                "description": "Infrarrojo España",
+                "folder": "infrarrojo_sp"
             },
-            "visible_europa": {
-                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatviscolmtgeu.png",
-                "description": "Visible Color Europa",
-                "folder": "visible_europa"
+            "infrarrojo_eu": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatirmtgeu.png",
+                "description": "Infrarrojo Europa",
+                "folder": "infrarrojo_eu"
             },
-            "vapor_agua_europa": {
-                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatwvmtgeu.png",
-                "description": "Vapor de Agua Europa (WV)",
-                "folder": "vapor_agua_europa"
+            "vapor_agua_sp": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatwvmtgsp.png",
+                "description": "Vapor de Agua España",
+                "folder": "vapor_agua_sp"
             },
-            "vapor_agua_2_europa": {
-                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatwv2mtgeu.png",
-                "description": "Vapor de Agua 2 Europa (WV2)",
-                "folder": "vapor_agua_2_europa"
+            "vapor_agua_eu": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatwvmtgeu.png",
+                "description": "Vapor de Agua Europa",
+                "folder": "vapor_agua_eu"
             },
-            "masas_aire_europa": {
-                "url": "https://images.meteociel.fr/image_envoi.php?source=url&dmode=1&imageurl=https://modeles20.meteociel.fr/satellite/latestsatairmassrgbmtgeu.png",
-                "description": "Masas de Aire Europa (Airmass RGB)",
-                "folder": "masas_aire_europa"
+            "masas_aire_sp": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatairmassrgbmtgsp.png",
+                "description": "Masas de Aire España",
+                "folder": "masas_aire_sp"
+            },
+            "masas_aire_eu": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatairmassrgbmtgeu.png",
+                "description": "Masas de Aire Europa",
+                "folder": "masas_aire_eu"
+            },
+            "visible_sp": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png",
+                "description": "Visible España",
+                "folder": "visible_sp"
+            },
+            "visible_eu": {
+                "url": "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgeu.png",
+                "description": "Visible Europa",
+                "folder": "visible_eu"
             }
         }
         
@@ -66,7 +82,7 @@ class SatelliteImageDownloader:
             
             print(f"[{time_display}] 📡 Descargando {info['description']}...")
             
-            # Descarga de imagen PNG
+            # Descargar la imagen
             response = requests.get(info['url'], headers=self.headers, timeout=15)
             
             if response.status_code == 200:
@@ -124,11 +140,11 @@ class SatelliteImageDownloader:
         print(f"\n{'='*80}")
         print(f"🛰️  DESCARGADOR DE IMÁGENES DE SATÉLITE - METEOCIEL")
         print(f"{'='*80}")
-        print(f"Región: España/Portugal")
+        print(f"Regiones: España/Portugal + Europa")
         print(f"Satélite: MTG Meteosat12 (Tercera generación)")
         print(f"Directorio: {os.path.abspath(self.base_dir)}/")
         print(f"{'='*80}")
-        print(f"\nTipos de imágenes:")
+        print(f"\nTipos de imágenes (8 canales):")
         for sat_type, info in self.satellite_types.items():
             print(f"  • {info['description']}")
         print(f"{'='*80}\n")

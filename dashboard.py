@@ -29,21 +29,18 @@ import matplotlib.figure as mfigure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 # ─── Rutas ───────────────────────────────────────────────────────────────────
-# Cuando el script corre empaquetado por PyInstaller, los datos se extraen en
-# `sys._MEIPASS`. Usar ese directorio como BASE_DIR en modo "frozen".
-if getattr(sys, 'frozen', False):
-    BASE_DIR = sys._MEIPASS
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-SAT_DIR = os.path.join(BASE_DIR, "satellite_images")
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+SAT_DIR    = os.path.join(BASE_DIR, "satellite_images")
 
 SAT_TYPES = [
-    ("infrarrojo_europa",  "satellite_images/infrarrojo_europa/infrarrojo_europa_latest.png",   "🛰️ Infrarrojo Europa"),
-    ("visible_europa",     "satellite_images/visible_europa/visible_europa_latest.png",         "�️ Visible Color Europa"),
-    ("vapor_agua_europa",  "satellite_images/vapor_agua_europa/vapor_agua_europa_latest.png",   "💨 Vapor de Agua Europa"),
-    ("vapor_agua_2_europa", "satellite_images/vapor_agua_2_europa/vapor_agua_2_europa_latest.png", "� Vapor de Agua 2 Europa"),
-    ("masas_aire_europa",  "satellite_images/masas_aire_europa/masas_aire_europa_latest.png",   "� Masas de Aire Europa"),
+    ("infrarrojo_sp",  "satellite_images/infrarrojo_sp/infrarrojo_sp_latest.png",   "🛰️ Infrarrojo España"),
+    ("infrarrojo_eu",  "satellite_images/infrarrojo_eu/infrarrojo_eu_latest.png",   "🛰️ Infrarrojo Europa"),
+    ("vapor_agua_sp",  "satellite_images/vapor_agua_sp/vapor_agua_sp_latest.png",   "💨 Vapor de Agua España"),
+    ("vapor_agua_eu",  "satellite_images/vapor_agua_eu/vapor_agua_eu_latest.png",   "💨 Vapor de Agua Europa"),
+    ("masas_aire_sp",  "satellite_images/masas_aire_sp/masas_aire_sp_latest.png",   "🌈 Masas de Aire España"),
+    ("masas_aire_eu",  "satellite_images/masas_aire_eu/masas_aire_eu_latest.png",   "🌈 Masas de Aire Europa"),
+    ("visible_sp",     "satellite_images/visible_sp/visible_sp_latest.png",         "👁️ Visible España"),
+    ("visible_eu",     "satellite_images/visible_eu/visible_eu_latest.png",         "👁️ Visible Europa"),
 ]
 
 # ─── Cola de logs ─────────────────────────────────────────────────────────────
@@ -54,12 +51,13 @@ log_queue = queue.Queue()
 #  Helpers de datos
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_temp_data_from_meteociel(date):
+def get_temp_data_from_meteociel(date, custom_month=None):
     """Extrae datos de temperatura del HTML de Meteociel (lógica de vstemperaturas.py)"""
     base_url = "https://www.meteociel.fr/temps-reel/obs_villes.php"
     code     = "8221"
     headers  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url      = f"{base_url}?code2={code}&jour2={date.day}&mois2=2&annee2={date.year}"
+    month = custom_month if custom_month is not None else 2
+    url = f"{base_url}?code2={code}&jour2={date.day}&mois2={month}&annee2={date.year}"
 
     try:
         response = requests.get(url, headers=headers, timeout=15)
@@ -89,13 +87,49 @@ def get_temp_data_from_meteociel(date):
         return {}
 
 
-def build_temp_figure(width_px, height_px):
+def get_custom_day_data(day, month, year):
+    """Obtiene datos de un día específico"""
+    base_url = "https://www.meteociel.fr/temps-reel/obs_villes.php"
+    code     = "8221"
+    headers  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    url = f"{base_url}?code2={code}&jour2={day}&mois2={month}&annee2={year}"
+
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.encoding = 'ISO-8859-1'
+        if response.status_code != 200:
+            return {}
+
+        pattern = r"src=['\"]//static\.meteociel\.fr/cartes_obs/graphe2\.php\?type=0&([^'\"]+)['\"]"
+        match   = re.search(pattern, response.text)
+        if not match:
+            return {}
+
+        params_str  = match.group(1)
+        data_pattern = r'data([\d.]+)=([\d.-]+)'
+        matches      = re.findall(data_pattern, params_str)
+        if not matches:
+            return {}
+
+        temp_data = {}
+        for hour_str, temp_str in matches:
+            hour_utc  = float(hour_str)
+            temp      = float(temp_str)
+            hour_local = (hour_utc + 1) % 24   # UTC+1
+            temp_data[hour_local] = temp
+        return temp_data
+    except Exception:
+        return {}
+
+
+def build_temp_figure(width_px, height_px, custom_day=None, custom_month=None):
     """Genera la figura matplotlib de comparación de temperaturas y la devuelve como PIL Image."""
     today     = datetime.now()
     yesterday = today - timedelta(days=1)
 
     today_data     = get_temp_data_from_meteociel(today)
     yesterday_data = get_temp_data_from_meteociel(yesterday)
+    custom_data    = get_custom_day_data(custom_day, custom_month, today.year) if custom_day and custom_month else {}
 
     dpi = 96
     fig = mfigure.Figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
@@ -113,55 +147,34 @@ def build_temp_figure(width_px, height_px):
         ax.plot(h, t, 'o-', color='#4ECDC4', linewidth=2.5, markersize=5,
                 label=f'Hoy {today.strftime("%d/%m")} ({len(t)} pts)', alpha=0.85)
         if t:
-            last_h, last_t = h[-1], t[-1]
-            last_hh = int(last_h)
-            last_mm = int((last_h % 1) * 60)
-            ax.plot(last_h, last_t, 'o', color='#FFD700', markersize=12,
+            ax.plot(h[-1], t[-1], 'o', color='#FFD700', markersize=12,
                     markeredgecolor='black', markeredgewidth=2,
-                    label=f'Última: {last_t:.1f}°C a las {last_hh:02d}:{last_mm:02d}',
+                    label=f'Última: {t[-1]:.1f}°C a las {int(h[-1]):02d}:{int((h[-1]%1)*60):02d}',
                     zorder=5)
-            # Etiqueta con coordenadas pegada al punto
-            ax.annotate(
-                f'{last_t:.1f}°C\n{last_hh:02d}:{last_mm:02d}h',
-                xy=(last_h, last_t),
-                xytext=(10, 8),          # desplazamiento en puntos
-                textcoords='offset points',
-                fontsize=8,
-                fontweight='bold',
-                color='#FFD700',
-                bbox=dict(boxstyle='round,pad=0.3', fc='#1e1e2e', ec='#FFD700', alpha=0.85),
-                arrowprops=dict(arrowstyle='->', color='#FFD700', lw=1.2),
-                zorder=6,
-            )
+    
+    if custom_data:
+        h = sorted(custom_data.keys())
+        t = [custom_data[x] for x in h]
+        ax.plot(h, t, 'o-', color='#9B59B6', linewidth=2.5, markersize=5,
+                label=f'Día {custom_day:02d}/{custom_month:02d} ({len(t)} pts)', alpha=0.85)
 
     ax.set_xlabel('Hora (Madrid UTC+1)', fontsize=9)
     ax.set_ylabel('Temperatura (°C)', fontsize=9)
-    ax.set_title(f'VS Temperaturas - Barajas\nAyer vs Hoy', fontsize=10, fontweight='bold')
+    title_text = f'VS Temperaturas - Barajas\nAyer vs Hoy'
+    if custom_day and custom_month:
+        title_text += f' vs {custom_day:02d}/{custom_month:02d}'
+    ax.set_title(title_text, fontsize=10, fontweight='bold')
     ax.legend(loc='best', fontsize=8, framealpha=0.9)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_xlim(0, 24)
     ax.set_xticks(range(0, 25, 2))
     ax.set_xticklabels([f'{h:02d}h' for h in range(0, 25, 2)], fontsize=7)
 
-    all_temps = list(yesterday_data.values()) + list(today_data.values())
+    all_temps = list(yesterday_data.values()) + list(today_data.values()) + list(custom_data.values())
     if all_temps:
         mn, mx = min(all_temps), max(all_temps)
         margin = (mx - mn) * 0.12 or 1
-        y_min = mn - margin
-        y_max = mx + margin
-        ax.set_ylim(y_min, y_max)
-        # Marcas cada 0.5 °C
-        import math
-        y_start = math.floor(y_min * 2) / 2   # redondear hacia abajo al 0.5 más cercano
-        y_end   = math.ceil(y_max  * 2) / 2   # redondear hacia arriba al 0.5 más cercano
-        yticks  = []
-        v = y_start
-        while v <= y_end + 0.001:
-            yticks.append(round(v, 1))
-            v += 0.5
-        ax.set_yticks(yticks)
-        ax.set_yticklabels([f'{t:.1f}' for t in yticks], fontsize=7)
-        ax.yaxis.grid(True, which='both', alpha=0.25, linestyle='--')
+        ax.set_ylim(mn - margin, mx + margin)
 
     fig.tight_layout()
 
@@ -182,8 +195,8 @@ class Dashboard(tk.Tk):
         super().__init__()
         self.title("🌤️  Madrid Barajas - Weather Dashboard")
         self.configure(bg="#1e1e2e")
-        self.geometry("1600x950")
-        self.minsize(1200, 800)
+        self.geometry("1400x820")
+        self.minsize(1100, 700)
         self.resizable(True, True)
         # Evitar que los Label con imagen fuercen resize de la ventana
         self.pack_propagate(False)
@@ -192,6 +205,13 @@ class Dashboard(tk.Tk):
         self._sat_photo   = None       # referencia PIL → Tk (evita GC)
         self._temp_photo  = None
         self._resize_job  = None       # job pendiente de resize
+        
+        # Variables para día de comparación personalizado
+        self.custom_day   = tk.IntVar(value=24)   # Día a comparar
+        self.custom_month = tk.IntVar(value=2)    # Mes en formato Meteociel
+        
+        # Índice para navegación entre gráficos de temperatura
+        self._temp_graph_index = 0  # 0=VS Temperaturas, 1=Temperature Plot (polymarket)
 
         self._build_ui()
         self._start_background_threads()
@@ -219,9 +239,61 @@ class Dashboard(tk.Tk):
         left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
         self.left_panel = left_panel  # guardar referencia para medir tamaño
 
-        tk.Label(left_panel, text="VS TEMPERATURAS",
+        # Barra de título con controles y navegación
+        temp_header = tk.Frame(left_panel, bg=PANEL_BG)
+        temp_header.pack(fill=tk.X, pady=(6, 2))
+        
+        # Botón navegación izquierda
+        btn_style = {"bg": "#313244", "fg": TITLE_FG, "font": ("Arial", 14, "bold"),
+                     "relief": tk.FLAT, "activebackground": "#45475a",
+                     "activeforeground": "white", "cursor": "hand2",
+                     "width": 2}
+        
+        tk.Button(temp_header, text="〈", command=self._temp_prev, **btn_style).pack(side=tk.LEFT, padx=8)
+        
+        # Título del gráfico (dinámico)
+        self.temp_title = tk.Label(temp_header, text="VS TEMPERATURAS  [1/2]",
                  bg=PANEL_BG, fg=TITLE_FG,
-                 font=("Arial", 11, "bold")).pack(pady=(6, 2))
+                 font=("Arial", 11, "bold"))
+        self.temp_title.pack(side=tk.LEFT, expand=True)
+        
+        # Botón navegación derecha
+        tk.Button(temp_header, text="〉", command=self._temp_next, **btn_style).pack(side=tk.RIGHT, padx=8)
+        
+        # Controles para día personalizado (solo visible en VS Temperaturas)
+        self.control_frame = tk.Frame(temp_header, bg=PANEL_BG)
+        self.control_frame.pack(side=tk.RIGHT, padx=8)
+        
+        tk.Label(self.control_frame, text="Comparar con:",
+                 bg=PANEL_BG, fg="#a6adc8", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 4))
+        
+        # Spinbox para día
+        day_spin = tk.Spinbox(self.control_frame, from_=1, to=31, width=3,
+                             textvariable=self.custom_day,
+                             bg="#313244", fg=TITLE_FG, 
+                             buttonbackground="#45475a",
+                             font=("Arial", 9),
+                             command=self._on_custom_day_changed)
+        day_spin.pack(side=tk.LEFT, padx=2)
+        
+        tk.Label(self.control_frame, text="/",
+                 bg=PANEL_BG, fg="#a6adc8", font=("Arial", 9)).pack(side=tk.LEFT)
+        
+        # Spinbox para mes
+        month_spin = tk.Spinbox(self.control_frame, from_=1, to=12, width=3,
+                               textvariable=self.custom_month,
+                               bg="#313244", fg=TITLE_FG,
+                               buttonbackground="#45475a",
+                               font=("Arial", 9),
+                               command=self._on_custom_day_changed)
+        month_spin.pack(side=tk.LEFT, padx=2)
+        
+        # Botón refresh
+        tk.Button(self.control_frame, text="🔄", 
+                 command=self._on_custom_day_changed,
+                 bg="#313244", fg=TITLE_FG, font=("Arial", 10),
+                 relief=tk.FLAT, cursor="hand2",
+                 activebackground="#45475a", width=2).pack(side=tk.LEFT, padx=(4, 0))
 
         self.temp_canvas = tk.Label(left_panel, bg=PANEL_BG,
                                     width=1, height=1)  # tamaño mínimo fijo
@@ -274,7 +346,7 @@ class Dashboard(tk.Tk):
 
         self.terminal = tk.Text(
             term_frame,
-            height=15,
+            height=10,
             bg="#11111b", fg="#cdd6f4",
             font=("Courier New", 9),
             relief=tk.FLAT,
@@ -323,7 +395,6 @@ class Dashboard(tk.Tk):
             if w < 50: w = 480
             if h < 50: h = 380
 
-            # Cargar imagen PNG
             img   = Image.open(full_path).convert("RGB")
             img   = img.resize((w, h), Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
@@ -333,11 +404,62 @@ class Dashboard(tk.Tk):
 
             mtime = datetime.fromtimestamp(os.path.getmtime(full_path))
             self.sat_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(full_path)//1024} KB")
-                
         except Exception as e:
             self.sat_status.config(text=f"❌ Error: {e}")
 
     # ── Temperaturas ──────────────────────────────────────────────────────────
+
+    def _temp_prev(self):
+        """Navegar al gráfico de temperatura anterior"""
+        self._temp_graph_index = (self._temp_graph_index - 1) % 2
+        self._refresh_temp_display()
+    
+    def _temp_next(self):
+        """Navegar al siguiente gráfico de temperatura"""
+        self._temp_graph_index = (self._temp_graph_index + 1) % 2
+        self._refresh_temp_display()
+    
+    def _refresh_temp_display(self):
+        """Actualiza el gráfico de temperatura mostrado según el índice"""
+        if self._temp_graph_index == 0:
+            # Gráfico VS Temperaturas (generado por build_temp_figure)
+            self.temp_title.config(text="VS TEMPERATURAS  [1/2]")
+            self.control_frame.pack(side=tk.RIGHT, padx=8)  # Mostrar controles
+            self._do_temp_refresh_async()
+        else:
+            # Gráfico Temperature Plot (generado por polymarket_bot.py)
+            self.temp_title.config(text="ÚLTIMAS LECTURAS  [2/2]")
+            self.control_frame.pack_forget()  # Ocultar controles
+            self._load_temperature_plot()
+
+    def _load_temperature_plot(self):
+        """Carga el gráfico generado por polymarket_bot.py"""
+        plot_path = os.path.join(BASE_DIR, "temperature_plot.png")
+        
+        if not os.path.exists(plot_path):
+            self.temp_status.config(text="⚠️  Esperando generación del gráfico...")
+            self.temp_canvas.config(image='', text="Gráfico no disponible", fg="#f38ba8")
+            return
+        
+        try:
+            w = max(self.left_panel.winfo_width()  - 16, 560)
+            h = max(self.left_panel.winfo_height() - 60, 380)
+            
+            img = Image.open(plot_path).convert("RGB")
+            img = img.resize((w, h), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            
+            self._temp_photo = photo
+            self.temp_canvas.config(image=photo, text="")
+            
+            mtime = datetime.fromtimestamp(os.path.getmtime(plot_path))
+            self.temp_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(plot_path)//1024} KB")
+        except Exception as e:
+            self.temp_status.config(text=f"❌ Error: {e}")
+
+    def _on_custom_day_changed(self):
+        """Callback cuando el usuario cambia el día/mes personalizado"""
+        self._do_temp_refresh_async()
 
     def _do_temp_refresh_async(self):
         """Genera el gráfico en hilo aparte para no bloquear la UI."""
@@ -345,7 +467,10 @@ class Dashboard(tk.Tk):
             try:
                 w = max(self.left_panel.winfo_width()  - 16, 560)
                 h = max(self.left_panel.winfo_height() - 60, 380)
-                pil_img = build_temp_figure(w, h)
+                # Obtener valores actuales de día y mes
+                custom_day = self.custom_day.get()
+                custom_month = self.custom_month.get()
+                pil_img = build_temp_figure(w, h, custom_day, custom_month)
                 pil_img = pil_img.convert("RGB").resize((w, h), Image.LANCZOS)
                 photo   = ImageTk.PhotoImage(pil_img)
                 self.after(0, lambda: self._apply_temp_photo(photo))
@@ -461,7 +586,12 @@ class Dashboard(tk.Tk):
 
     def _schedule_temp_refresh(self):
         """Refresca la gráfica de temperatura cada 20 segundos."""
-        self._do_temp_refresh_async()
+        # Actualizar según el gráfico activo
+        if self._temp_graph_index == 0:
+            self._do_temp_refresh_async()
+        else:
+            self._load_temperature_plot()
+        
         self.after(20_000, self._schedule_temp_refresh)   # cada 20 segundos
 
     def _schedule_refresh(self):
