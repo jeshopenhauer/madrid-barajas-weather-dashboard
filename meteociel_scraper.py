@@ -53,42 +53,11 @@ class MeteocielScraper:
                                 temp_value = temp_text.replace('°C', '').replace('°', '').strip()
                                 temperature = float(temp_value)
                                 
-                                # Extraer humedad (columna 5: "Humi.")
-                                humidity = None
-                                try:
-                                    hum_text = cells[5].get_text(strip=True)
-                                    if '%' in hum_text:
-                                        humidity = int(hum_text.replace('%', '').strip())
-                                except:
-                                    pass
-                                
-                                # Extraer viento (columna 9: "Vent (rafales)")
-                                wind = None
-                                try:
-                                    wind_text = cells[9].get_text(strip=True)
-                                    if 'km/h' in wind_text:
-                                        wind_value = wind_text.split()[0]  # Tomar primer número
-                                        wind = int(wind_value)
-                                except:
-                                    pass
-                                
-                                # Extraer presión (columna 10: "Pression")
-                                pressure = None
-                                try:
-                                    pres_text = cells[10].get_text(strip=True)
-                                    if 'hPa' in pres_text:
-                                        pressure = float(pres_text.replace('hPa', '').strip())
-                                except:
-                                    pass
-                                
                                 # Convertir hora UTC a hora local
                                 hora_local = self.convert_utc_to_local(hora_cell)
                                 
                                 data = {
                                     'temperature': temperature,
-                                    'humidity': humidity,
-                                    'wind_speed': wind,
-                                    'pressure': pressure,
                                     'timestamp_utc': hora_cell,
                                     'timestamp_local': hora_local,
                                     'scraped_at': datetime.now().isoformat()
@@ -145,23 +114,9 @@ class MeteocielScraper:
         temp = data.get('temperature')
         temp_str = f"{temp:>5.1f}°C" if temp is not None else "  N/A"
         
-        hum = data.get('humidity')
-        hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-        
-        wind = data.get('wind_speed')
-        wind_str = f"{wind:>3}" if wind is not None else " N/A"
-        
-        pres = data.get('pressure')
-        pres_str = f"{pres:>6.1f}" if pres is not None else "    N/A"
-        
         timestamp_local = data.get('timestamp_local', 'N/A')
-        timestamp_utc = data.get('timestamp_utc', 'N/A')
         
-        print(f"[{now}] Meteociel   | 🌡️  {temp_str} | "
-              f"💧 {hum_str} | "
-              f"💨 {wind_str} km/h | "
-              f"📊 {pres_str} hPa | "
-              f"⏰ {timestamp_local} (UTC: {timestamp_utc})")
+        print(f"[{now}] Meteociel   | 🌡️  {temp_str} | ⏰ {timestamp_local}")
     
     def monitor(self, interval=60):
         """Monitorea la temperatura continuamente"""
@@ -171,7 +126,6 @@ class MeteocielScraper:
         print(f"Fuente: Meteociel.fr (Web Scraping)")
         print(f"URL: {self.url}")
         print(f"Intervalo: {interval} segundos")
-        print(f"NOTA: Hora en UTC, se convierte a hora local (UTC+1)")
         print(f"{'='*80}\n")
         
         try:
@@ -180,12 +134,8 @@ class MeteocielScraper:
                 self.print_status(data)
                 
                 if data:
-                    print(f"\n📋 Datos completos:")
+                    print(f"\n📋 Datos:")
                     print(f"   Temperatura: {data.get('temperature')}°C")
-                    print(f"   Humedad: {data.get('humidity')}%")
-                    print(f"   Viento: {data.get('wind_speed')} km/h")
-                    print(f"   Presión: {data.get('pressure')} hPa")
-                    print(f"   Hora UTC: {data.get('timestamp_utc')}")
                     print(f"   Hora Local: {data.get('timestamp_local')}")
                     print()
                 
@@ -209,10 +159,6 @@ def main():
         print("✅ Scraper funcionando correctamente!")
         print(f"\n📊 Datos obtenidos:")
         print(f"   🌡️  Temperatura: {data.get('temperature')}°C")
-        print(f"   💧 Humedad: {data.get('humidity')}%")
-        print(f"   💨 Viento: {data.get('wind_speed')} km/h")
-        print(f"   📊 Presión: {data.get('pressure')} hPa")
-        print(f"   ⏰ Hora UTC: {data.get('timestamp_utc')}")
         print(f"   ⏰ Hora Local (España): {data.get('timestamp_local')}")
         print()
     else:

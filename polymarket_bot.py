@@ -15,10 +15,12 @@ from datetime import datetime, timedelta
 import time
 import sys
 from bs4 import BeautifulSoup
+from madrid_barajas_temps import get_current_temperature_barajas
 import matplotlib
 matplotlib.use('Agg')  # Backend sin ventana
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
 from collections import defaultdict
 import os
 
@@ -87,9 +89,21 @@ class PolymarketWeatherBot:
             'meteociel': {'time': None, 'temp': None}
         }
         
-        # Directorio para guardar el gráfico
-        self.output_dir = os.path.dirname(os.path.abspath(__file__))
-        self.plot_path = os.path.join(self.output_dir, "temperature_plot.png")
+        # Directorio para guardar los gráficos
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.graphs_dir = os.path.join(self.base_dir, "polymarket_graphs")
+        os.makedirs(self.graphs_dir, exist_ok=True)
+        self.history_plot_path = os.path.join(self.graphs_dir, "polymarket_temperature_history.png")
+        
+        # Almacenamiento acumulativo de datos históricos (últimas 5 horas)
+        self.history_data = {
+            'weather_com': [],
+            'pws1': [],
+            'pws2': [],
+            'aemet': [],
+            'meteociel': []
+        }
+        self.history_start_time = datetime.now()
         
     def get_weather_com_temperature(self):
         """Obtiene la temperatura de Weather.com API"""
@@ -100,10 +114,6 @@ class PolymarketWeatherBot:
             
             return {
                 "temperature": data.get("temperature"),
-                
-                "humidity": data.get("relativeHumidity"),
-                "pressure": data.get("pressureAltimeter"),
-                "wind_speed": data.get("windSpeed"),
                 "timestamp": data.get("validTimeLocal"),
             }
         except Exception as e:
@@ -123,10 +133,6 @@ class PolymarketWeatherBot:
                 
                 return {
                     "temperature": metric.get("temp"),
-                  
-                    "humidity": obs.get("humidity"),
-                    "pressure": metric.get("pressure"),
-                    "wind_speed": metric.get("windSpeed"),
                     "timestamp": obs.get("obsTimeLocal"),
                     "station_id": obs.get("stationID"),
                 }
@@ -164,10 +170,6 @@ class PolymarketWeatherBot:
                 
                 return {
                     "temperature": obs.get("ta"),
-                   
-                    "humidity": obs.get("hr"),
-                    "pressure": obs.get("pres"),
-                    "wind_speed": obs.get("vv"),
                     "timestamp": obs.get("fint"),
                 }
             return None
@@ -200,24 +202,6 @@ class PolymarketWeatherBot:
                             if '°C' in temp_text:
                                 temp = float(temp_text.replace('°C', '').replace('°', '').strip())
                                 
-                                # Columna 5: Humedad
-                                humidity = None
-                                try:
-                                    hum_text = cells[5].get_text(strip=True)
-                                    if '%' in hum_text:
-                                        humidity = int(hum_text.replace('%', '').strip())
-                                except:
-                                    pass
-                                
-                                # Columna 9: Viento
-                                wind = None
-                                try:
-                                    wind_text = cells[9].get_text(strip=True)
-                                    if 'km/h' in wind_text:
-                                        wind = int(wind_text.split()[0])
-                                except:
-                                    pass
-                                
                                 # Convertir hora UTC a local (UTC+1)
                                 hora_str = hora_cell.replace('h', ':')
                                 if len(hora_str.split(':')[1]) == 1:
@@ -227,9 +211,6 @@ class PolymarketWeatherBot:
                                 
                                 all_data.append({
                                     "temperature": temp,
-                                    
-                                    "humidity": humidity,
-                                    "wind_speed": wind,
                                     "timestamp": hora_local.strftime("%H:%M"),
                                 })
                         except:
@@ -258,82 +239,129 @@ class PolymarketWeatherBot:
         self.latest_data[source]['time'] = timestamp
         self.latest_data[source]['temp'] = temp
     
-    def generate_plot(self):
-        """Genera el gráfico de temperaturas (último punto de cada fuente)"""
+    def add_to_history(self, source, temp, timestamp=None):
+        """Añade un dato al histórico acumulativo (almacena TODO desde que se inicia)"""
+        if temp is None:
+            return
+        
+        if timestamp is None:
+            timestamp = datetime.now()
+        elif isinstance(timestamp, str):
+            # Convertir string "HH:MM" a datetime de hoy
+            try:
+                hour, minute = map(int, timestamp.split(':'))
+                timestamp = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+            except:
+                timestamp = datetime.now()
+        
+        # Añadir al histórico (SIN LÍMITE DE TIEMPO)
+        self.history_data[source].append({
+            'time': timestamp,
+            'temp': temp
+        })
+    
+    
+    def generate_history_plot(self):
+        """Genera el gráfico acumulativo histórico de 5 fuentes"""
         try:
-            plt.figure(figsize=(10, 6))
+            # Tamaño optimizado para el dashboard (más compacto)
+            fig = plt.figure(figsize=(10, 5.2), dpi=100)
+            ax = fig.add_subplot(111)
             
             # Colores y símbolos para cada fuente
             colors = {
-                'weather_com': '#FF6B6B',
-                'pws1': '#4ECDC4',
-                'pws2': '#45B7D1',
-                'aemet': '#96CEB4',
-                'meteociel': '#9B59B6'
+                'weather_com': "#FF0000",
+                'pws1': "#09FF00",
+                'pws2': "#0044FF",
+                'aemet': "#E100FF53",
+                'meteociel': "#B700FF"
             }
             
             labels = {
-                'weather_com': 'Weather.com',
-                'pws1': 'IMADRI133',
-                'pws2': 'IMADRI265',
+                'weather_com': 'Weather.com (ICAO LEMD)',
+                'pws1': 'IMADRI133 (PWS)',
+                'pws2': 'IMADRI265 (PWS)',
                 'aemet': 'AEMET',
                 'meteociel': 'Meteociel'
             }
             
             markers = {
                 'weather_com': 'o',
-                'pws1': 's',
-                'pws2': '^',
-                'aemet': 'D',
+                'pws1': 'v',
+                'pws2': 'v',
+                'aemet': 'o',
                 'meteociel': 'v'
             }
             
-            # Plotear cada fuente (solo último punto)
-            for source, data in self.latest_data.items():
-                if data['time'] is not None and data['temp'] is not None:
-                    plt.scatter(data['time'], data['temp'], 
-                              marker=markers[source], s=200, 
-                              color=colors[source], label=labels[source], 
-                              alpha=0.8, edgecolors='black', linewidth=1.5, zorder=5)
+            # Plotear el histórico de cada fuente
+            for source in ['weather_com', 'pws1', 'pws2', 'aemet', 'meteociel']:
+                data = self.history_data[source]
+                
+                if len(data) > 0:
+                    timestamps = [d['time'] for d in data]
+                    temps = [d['temp'] for d in data]
                     
-                    # Añadir etiqueta con valor
-                    plt.annotate(f"{data['temp']:.1f}°C", 
-                               (data['time'], data['temp']),
-                               textcoords="offset points", 
-                               xytext=(0, 10), 
-                               ha='center', 
-                               fontsize=9,
-                               fontweight='bold',
-                               bbox=dict(boxstyle='round,pad=0.3', 
-                                       facecolor=colors[source], 
-                                       alpha=0.3))
+                    # Obtener el último registro
+                    last_time = timestamps[-1].strftime('%H:%M:%S')
+                    last_temp = temps[-1]
+                    
+                    # Crear etiqueta con información del último registro
+                    label_with_info = f"{labels[source]} | {last_time} - {last_temp:.2f}°C"
+                    
+                    # Línea con puntos
+                    ax.plot(timestamps, temps, 
+                            marker=markers[source], 
+                            linestyle='-', 
+                            linewidth=1.6, 
+                            markersize=3.5,
+                            color=colors[source], 
+                            label=label_with_info, 
+                            alpha=0.85, 
+                            zorder=3)
             
-            plt.xlabel('Hora de Lectura (UTC+1)', fontsize=11)
-            plt.ylabel('Temperatura (°C)', fontsize=11)
-            plt.title('Últimas Lecturas de Temperatura - Madrid Barajas\n5 Fuentes en Tiempo Real', 
-                     fontsize=13, fontweight='bold')
-            plt.legend(loc='best', fontsize=10, framealpha=0.9)
-            plt.grid(True, alpha=0.3, linestyle='--')
+            ax.set_xlabel('Tiempo (UTC+1)', fontsize=10, fontweight='bold')
+            ax.set_ylabel('Temperatura (°C)', fontsize=10, fontweight='bold')
+            ax.set_title('Tracking 5 Fuentes - Historial Completo', 
+                     fontsize=11, fontweight='bold', pad=8)
+            ax.legend(loc='upper left', fontsize=8, framealpha=0.92, edgecolor='gray', frameon=True)
             
-            # Formato del eje X (tiempo)
-            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            plt.gca().xaxis.set_major_locator(mdates.MinuteLocator(interval=10))
-            plt.gcf().autofmt_xdate()  # Rotar etiquetas
+            # Grid con líneas horizontales cada 0.5 grados
+            ax.grid(True, alpha=0.2, linestyle='--', axis='y')
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+            ax.grid(True, which='minor', alpha=0.2, linestyle='--', axis='y')
             
-            # Añadir rango al eje Y con margen
-            temps = [d['temp'] for d in self.latest_data.values() if d['temp'] is not None]
-            if temps:
-                min_temp, max_temp = min(temps), max(temps)
-                margin = (max_temp - min_temp) * 0.15 or 1
-                plt.ylim(min_temp - margin, max_temp + margin)
+            # Formatear eje X (tiempo)
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=15))
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=0, ha='right', fontsize=8)
             
-            plt.tight_layout()
-            plt.savefig(self.plot_path, dpi=100, bbox_inches='tight')
+            # Formatear eje Y (temperatura) con marcas cada 1°C
+            all_temps = []
+            for source in self.history_data:
+                all_temps.extend([d['temp'] for d in self.history_data[source] if d['temp'] is not None])
+            
+            if all_temps:
+                min_temp = min(all_temps)
+                max_temp = max(all_temps)
+                margin = (max_temp - min_temp) * 0.12 or 1
+                y_min = int(min_temp - margin)
+                y_max = int(max_temp + margin) + 1
+                
+                ax.set_ylim(y_min, y_max)
+                # Configurar marcas: etiquetas cada 1°C, líneas grid cada 0.5°C
+                ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+                ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+            
+            # Márgenes optimizados para mejor ajuste en el dashboard
+            fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.13)
+            
+            plt.savefig(self.history_plot_path, dpi=100, bbox_inches='tight')
             plt.close()
             
-            print(f"📊 Gráfico actualizado: {self.plot_path}", flush=True)
+            print(f"📊 Gráfico histórico actualizado: {self.history_plot_path}", flush=True)
         except Exception as e:
-            print(f"❌ Error generando gráfico: {e}", flush=True)
+            print(f"❌ Error generando gráfico histórico: {e}", flush=True)
     
     
     
@@ -344,81 +372,54 @@ class PolymarketWeatherBot:
         # Línea 1: Weather.com
         if weather_data:
             temp = weather_data.get('temperature')
-            hum = weather_data.get('humidity')
-            wind = weather_data.get('wind_speed')
-            
             temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
-            
-            print(f"[{now}] Weather.com  | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            print(f"[{now}] Weather   | {temp_str}", flush=True)
         else:
-            print(f"[{now}] Weather.com  | ❌ Sin datos", flush=True)
-        
+            print(f"[{now}] Weather | ❌ Sin datos", flush=True)
+
         # Línea 2: PWS 1 (IMADRI133)
         if pws1_data:
             temp = pws1_data.get('temperature')
-            
-            hum = pws1_data.get('humidity')
-            wind = pws1_data.get('wind_speed')
             station = pws1_data.get('station_id', 'N/A')
-            
             temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
-           
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
-
-            print(f"[{now}] {station} | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            print(f"[{now}] {station} | {temp_str}", flush=True)
         else:
             print(f"[{now}] IMADRI133 | ❌ Sin datos", flush=True)
         
         # Línea 3: PWS 2 (IMADRI265)
         if pws2_data:
             temp = pws2_data.get('temperature')
-            
-            hum = pws2_data.get('humidity')
-            wind = pws2_data.get('wind_speed')
             station = pws2_data.get('station_id', 'N/A')
-            
             temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
-           
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
-
-            print(f"[{now}] {station} | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            print(f"[{now}] {station} | {temp_str}", flush=True)
         else:
             print(f"[{now}] IMADRI265 | ❌ Sin datos", flush=True)
         
         # Línea 4: AEMET
         if aemet_data:
             temp = aemet_data.get('temperature')
-           
-            hum = aemet_data.get('humidity')
-            wind = aemet_data.get('wind_speed')
-            
             temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
-            
-            hum_str = f"{hum:>3.0f}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>6.2f}" if wind is not None else "   N/A"
-            
-            print(f"[{now}] AEMET       | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            print(f"[{now}] AEMET     | {temp_str}", flush=True)
         else:
-            print(f"[{now}] AEMET       | ❌ Sin datos", flush=True)
+            print(f"[{now}] AEMET  | ❌ Sin datos", flush=True)
         
         # Línea 5: Meteociel
         if meteociel_data:
             temp = meteociel_data.get('temperature')
-            hum = meteociel_data.get('humidity')
-            wind = meteociel_data.get('wind_speed')
             timestamp = meteociel_data.get('timestamp', '')
-            
             temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
-            hum_str = f"{hum:>3}%" if hum is not None else " N/A"
-            wind_str = f"{wind:>3}" if wind is not None else " N/A"
-            
-            print(f"[ {timestamp:>5}] Meteociel   | {temp_str} | 💧 {hum_str} | 💨 {wind_str} km/h", flush=True)
+            print(f"[{timestamp:>5}:00] Meteociel | {temp_str}", flush=True)
         else:
             print(f"[{now}] Meteociel   | ❌ Sin datos", flush=True)
+
+        # Línea 6: Open-Meteo (temperatura actual Barajas)
+        try:
+            om = get_current_temperature_barajas(max_retries=2, retry_delay=1.0)
+            t = om.get('current_temperature')
+            t_str = f"{t:>6.2f}°C" if t is not None else "   N/A"
+            print(f"[{now}] OpenMeteo| {t_str}", flush=True)
+        except Exception:
+            print(f"[{now}] OpenMeteo| ❌ Error", flush=True)
         
         print(flush=True)  # Línea en blanco para separar
     
@@ -432,7 +433,7 @@ class PolymarketWeatherBot:
         print(f"API 4: AEMET OpenData (Oficial Gobierno España - Estación 3129)", flush=True)
         print(f"API 5: Meteociel (Web Scraping - Tiempo Real)", flush=True)
         print(f"Intervalo: {interval} segundos\n", flush=True)
-        print(f"Gráfico: {self.plot_path}", flush=True)
+        print(f"Gráfico histórico: {self.history_plot_path}", flush=True)
         print(f"{'='*80}\n", flush=True)
         
         try:
@@ -448,20 +449,27 @@ class PolymarketWeatherBot:
                 # Actualizar últimos datos
                 if weather_data:
                     self.update_latest_data('weather_com', weather_data.get('temperature'))
+                    self.add_to_history('weather_com', weather_data.get('temperature'))
                 if pws1_data:
                     self.update_latest_data('pws1', pws1_data.get('temperature'))
+                    self.add_to_history('pws1', pws1_data.get('temperature'))
                 if pws2_data:
                     self.update_latest_data('pws2', pws2_data.get('temperature'))
+                    self.add_to_history('pws2', pws2_data.get('temperature'))
                 if aemet_data:
                     self.update_latest_data('aemet', aemet_data.get('temperature'))
+                    self.add_to_history('aemet', aemet_data.get('temperature'))
                 if meteociel_data:
                     # Usar el timestamp de Meteociel si está disponible
                     self.update_latest_data('meteociel', 
                                           meteociel_data.get('temperature'),
                                           meteociel_data.get('timestamp'))
+                    self.add_to_history('meteociel',
+                                      meteociel_data.get('temperature'),
+                                      meteociel_data.get('timestamp'))
                 
-                # Generar gráfico cada actualización
-                self.generate_plot()
+                # Generar gráfico histórico cada actualización
+                self.generate_history_plot()
                 
                 self.print_status(weather_data, pws1_data, pws2_data, aemet_data, meteociel_data)
                 print(f"\n{'='*80}", flush=True)
@@ -470,7 +478,7 @@ class PolymarketWeatherBot:
         except KeyboardInterrupt:
             print(f"\n\nBot detenido.\n", flush=True)
             # Generar gráfico final
-            self.generate_plot()
+            self.generate_history_plot()
             sys.exit(0)
         
 

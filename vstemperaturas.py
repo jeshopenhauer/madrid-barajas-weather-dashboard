@@ -7,6 +7,7 @@ Extrae los datos del gráfico de Meteociel directamente del HTML
 import requests
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import re
 import sys
 
@@ -222,6 +223,15 @@ class TemperatureComparison:
             max_temp = max(all_temps)
             margin = (max_temp - min_temp) * 0.1 or 1
             self.ax.set_ylim(min_temp - margin, max_temp + margin)
+            
+            # Añadir marcas en el eje Y cada 1°C
+            # Marcas principales cada 1°C
+            self.ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+            # Marcas secundarias cada 0.5°C
+            self.ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+            # Mostrar grid para marcas principales
+            self.ax.grid(True, which='major', alpha=0.3, linestyle='-', linewidth=1)
+            self.ax.grid(True, which='minor', alpha=0.15, linestyle=':', linewidth=0.5)
         
         # Ajustar layout
         self.fig.tight_layout()

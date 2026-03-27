@@ -26,6 +26,7 @@ import matplotlib
 matplotlib.use('Agg')  # Sin ventana, renderizar en memoria
 import matplotlib.pyplot as plt
 import matplotlib.figure as mfigure
+import matplotlib.ticker as ticker
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 # ─── Rutas ───────────────────────────────────────────────────────────────────
@@ -33,14 +34,14 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 SAT_DIR    = os.path.join(BASE_DIR, "satellite_images")
 
 SAT_TYPES = [
-    ("infrarrojo_sp",  "satellite_images/infrarrojo_sp/infrarrojo_sp_latest.png",   "🛰️ Infrarrojo España"),
-    ("infrarrojo_eu",  "satellite_images/infrarrojo_eu/infrarrojo_eu_latest.png",   "🛰️ Infrarrojo Europa"),
-    ("vapor_agua_sp",  "satellite_images/vapor_agua_sp/vapor_agua_sp_latest.png",   "💨 Vapor de Agua España"),
-    ("vapor_agua_eu",  "satellite_images/vapor_agua_eu/vapor_agua_eu_latest.png",   "💨 Vapor de Agua Europa"),
-    ("masas_aire_sp",  "satellite_images/masas_aire_sp/masas_aire_sp_latest.png",   "🌈 Masas de Aire España"),
-    ("masas_aire_eu",  "satellite_images/masas_aire_eu/masas_aire_eu_latest.png",   "🌈 Masas de Aire Europa"),
-    ("visible_sp",     "satellite_images/visible_sp/visible_sp_latest.png",         "👁️ Visible España"),
-    ("visible_eu",     "satellite_images/visible_eu/visible_eu_latest.png",         "👁️ Visible Europa"),
+    ("infrarrojo_sp",  "satellite_images/infrarrojo_sp/infrarrojo_sp_latest.png",   "Infrarrojo España"),
+    ("infrarrojo_eu",  "satellite_images/infrarrojo_eu/infrarrojo_eu_latest.png",   "Infrarrojo Europa"),
+    ("vapor_agua_sp",  "satellite_images/vapor_agua_sp/vapor_agua_sp_latest.png",   "Vapor de Agua España"),
+    ("vapor_agua_eu",  "satellite_images/vapor_agua_eu/vapor_agua_eu_latest.png",   "Vapor de Agua Europa"),
+    ("masas_aire_sp",  "satellite_images/masas_aire_sp/masas_aire_sp_latest.png",   "Masas de Aire España"),
+    ("masas_aire_eu",  "satellite_images/masas_aire_eu/masas_aire_eu_latest.png",   "Masas de Aire Europa"),
+    ("visible_sp",     "satellite_images/visible_sp/visible_sp_latest.png",         "Visible España"),
+    ("visible_eu",     "satellite_images/visible_eu/visible_eu_latest.png",         "Visible Europa"),
 ]
 
 # ─── Cola de logs ─────────────────────────────────────────────────────────────
@@ -175,8 +176,14 @@ def build_temp_figure(width_px, height_px, custom_day=None, custom_month=None):
         mn, mx = min(all_temps), max(all_temps)
         margin = (mx - mn) * 0.12 or 1
         ax.set_ylim(mn - margin, mx + margin)
-
-    fig.tight_layout()
+        
+        # Añadir marcas en el eje Y cada 1°C
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+        ax.grid(True, which='major', alpha=0.3, linestyle='--', linewidth=1)
+        ax.grid(True, which='minor', alpha=0.15, linestyle=':', linewidth=0.5)
+    else:
+        ax.grid(True, alpha=0.3, linestyle='--')
 
     canvas = FigureCanvasAgg(fig)
     canvas.draw()
@@ -434,7 +441,7 @@ class Dashboard(tk.Tk):
 
     def _load_temperature_plot(self):
         """Carga el gráfico generado por polymarket_bot.py"""
-        plot_path = os.path.join(BASE_DIR, "temperature_plot.png")
+        plot_path = os.path.join(BASE_DIR, "polymarket_graphs", "polymarket_temperature_history.png")
         
         if not os.path.exists(plot_path):
             self.temp_status.config(text="⚠️  Esperando generación del gráfico...")
@@ -582,7 +589,7 @@ class Dashboard(tk.Tk):
     def _schedule_sat_refresh(self):
         """Refresca imágenes satélite cada 5 minutos."""
         self._refresh_satellite_display()
-        self.after(300_000, self._schedule_sat_refresh)   # cada 5 minutos
+        self.after(600_000, self._schedule_sat_refresh)   # cada 10 minutos
 
     def _schedule_temp_refresh(self):
         """Refresca la gráfica de temperatura cada 20 segundos."""
