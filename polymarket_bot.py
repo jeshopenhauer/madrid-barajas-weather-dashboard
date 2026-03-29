@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 Bot de Trading para Polymarket - Monitoreando  Weather en Madrid Barajas
-COMPARANDO 5 FUENTES:
+COMPARANDO 4 FUENTES:
   1. Weather.com API (ICAO LEMD)
   2. PWS - Estación Personal IMADRI133
   3. PWS - Estación Personal IMADRI265
-  4. AEMET OpenData (Oficial Gobierno España)
-  5. Meteociel (Web Scraping - Tiempo Real)
+  4. Meteociel (Web Scraping - Tiempo Real)
 """
 
 import requests
@@ -15,7 +14,6 @@ from datetime import datetime, timedelta
 import time
 import sys
 from bs4 import BeautifulSoup
-from madrid_barajas_temps import get_current_temperature_barajas
 import matplotlib
 matplotlib.use('Agg')  # Backend sin ventana
 import matplotlib.pyplot as plt
@@ -37,7 +35,8 @@ class PolymarketWeatherBot:
             "icaoCode": "LEMD",  # Aeropuerto Madrid-Barajas OFICIAL
             "units": "m",
             "language": "es-ES",
-            "format": "json"
+            "format": "json",
+            
         }
         
         # USAR ENDPOINT DE LA ESTACIÓN PERSONAL (PWS)
@@ -62,15 +61,6 @@ class PolymarketWeatherBot:
             "numericPrecision": "decimal"
         }
         
-        # API 2: AEMET OpenData (Oficial Gobierno España)
-        self.aemet_api_key = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZXN1c21vcmFsYXJhbmRhMTBAZ21haWwuY29tIiwianRpIjoiOWQ2ZTZjNTItMDZkMy00NzRhLWFjMTMtMjBhZjMyNDAyMjQ0IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3NzQzNzcxNTksInVzZXJJZCI6IjlkNmU2YzUyLTA2ZDMtNDc0YS1hYzEzLTIwYWYzMjQwMjI0NCIsInJvbGUiOiIifQ.Tx_DszUtdhBJ9tpcPxPUwLnBW99rOqLvifyyCm3sECQ"
-        self.aemet_base_url = "https://opendata.aemet.es/opendata/api"
-        self.aemet_station_id = "3129"  # Madrid-Barajas
-        self.aemet_headers = {
-            "api_key": self.aemet_api_key,
-            "Accept": "application/json"
-        }
-        
         # API 3: Meteociel (Web Scraping)
         self.meteociel_url = "https://www.meteociel.fr/temps-reel/obs_villes.php?code2=8221"
         self.meteociel_headers = {
@@ -85,22 +75,24 @@ class PolymarketWeatherBot:
             'weather_com': {'time': None, 'temp': None},
             'pws1': {'time': None, 'temp': None},
             'pws2': {'time': None, 'temp': None},
-            'aemet': {'time': None, 'temp': None},
             'meteociel': {'time': None, 'temp': None}
         }
         
-        # Directorio para guardar los gráficos
+        # Directorio para guardar los gráficos y datos
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.graphs_dir = os.path.join(self.base_dir, "polymarket_graphs")
         os.makedirs(self.graphs_dir, exist_ok=True)
-        self.history_plot_path = os.path.join(self.graphs_dir, "polymarket_temperature_history.png")
+        
+        # Archivos con fecha del día
+        self.today_str = datetime.now().strftime("%Y-%m-%d")
+        self.history_plot_path = os.path.join(self.graphs_dir, f"polymarket_temperature_history_{self.today_str}.png")
+        self.history_data_path = os.path.join(self.graphs_dir, f"polymarket_history_data_{self.today_str}.json")
         
         # Almacenamiento acumulativo de datos históricos (últimas 5 horas)
         self.history_data = {
             'weather_com': [],
             'pws1': [],
             'pws2': [],
-            'aemet': [],
             'meteociel': []
         }
         self.history_start_time = datetime.now()
@@ -140,43 +132,6 @@ class PolymarketWeatherBot:
         except Exception as e:
             return None
     
-    def get_aemet_temperature(self):
-        """Obtiene la temperatura de AEMET OpenData (Oficial)"""
-        try:
-            # Paso 1: Obtener URL de datos
-            url = f"{self.aemet_base_url}/observacion/convencional/datos/estacion/{self.aemet_station_id}"
-            response = requests.get(url, headers=self.aemet_headers, timeout=10)
-            
-            if response.status_code != 200:
-                return None
-            
-            data = response.json()
-            
-            if 'datos' not in data:
-                return None
-            
-            # Paso 2: Obtener los datos reales
-            datos_url = data['datos']
-            datos_response = requests.get(datos_url, timeout=10)
-            
-            if datos_response.status_code != 200:
-                return None
-            
-            observaciones = datos_response.json()
-            
-            # Obtener la observación más reciente
-            if len(observaciones) > 0:
-                obs = observaciones[-1]
-                
-                return {
-                    "temperature": obs.get("ta"),
-                    "timestamp": obs.get("fint"),
-                }
-            return None
-                
-        except Exception as e:
-            return None
-    
     def get_meteociel_temperature(self):
         """Obtiene temperatura de Meteociel (Web Scraping)"""
         try:
@@ -202,12 +157,12 @@ class PolymarketWeatherBot:
                             if '°C' in temp_text:
                                 temp = float(temp_text.replace('°C', '').replace('°', '').strip())
                                 
-                                # Convertir hora UTC a local (UTC+1)
+                                # Convertir hora UTC a local (UTC+2)
                                 hora_str = hora_cell.replace('h', ':')
                                 if len(hora_str.split(':')[1]) == 1:
                                     hora_str = hora_str.replace(':', ':0')
                                 hora_utc = datetime.strptime(f"{datetime.now().date()} {hora_str}", "%Y-%m-%d %H:%M")
-                                hora_local = hora_utc + timedelta(hours=1)
+                                hora_local = hora_utc + timedelta(hours=2)
                                 
                                 all_data.append({
                                     "temperature": temp,
@@ -262,8 +217,26 @@ class PolymarketWeatherBot:
     
     
     def generate_history_plot(self):
-        """Genera el gráfico acumulativo histórico de 5 fuentes"""
+        """Genera el gráfico acumulativo histórico de 5 fuentes y guarda los datos en JSON."""
+        # Comprobar si cambió de día y actualizar nombres de archivo
+        current_date_str = datetime.now().strftime("%Y-%m-%d")
+        if current_date_str != self.today_str:
+            self.today_str = current_date_str
+            self.history_plot_path = os.path.join(self.graphs_dir, f"polymarket_temperature_history_{self.today_str}.png")
+            self.history_data_path = os.path.join(self.graphs_dir, f"polymarket_history_data_{self.today_str}.json")
+            
         try:
+            # Guardar datos en JSON
+            json_data = {}
+            for source, data_list in self.history_data.items():
+                json_data[source] = [
+                    {'time': d['time'].strftime('%Y-%m-%d %H:%M:%S'), 'temp': d['temp']}
+                    for d in data_list
+                ]
+            
+            with open(self.history_data_path, 'w') as f:
+                json.dump(json_data, f, indent=4)
+            
             # Tamaño optimizado para el dashboard (más compacto)
             fig = plt.figure(figsize=(10, 5.2), dpi=100)
             ax = fig.add_subplot(111)
@@ -273,7 +246,6 @@ class PolymarketWeatherBot:
                 'weather_com': "#FF0000",
                 'pws1': "#09FF00",
                 'pws2': "#0044FF",
-                'aemet': "#E100FF53",
                 'meteociel': "#B700FF"
             }
             
@@ -281,7 +253,6 @@ class PolymarketWeatherBot:
                 'weather_com': 'Weather.com (ICAO LEMD)',
                 'pws1': 'IMADRI133 (PWS)',
                 'pws2': 'IMADRI265 (PWS)',
-                'aemet': 'AEMET',
                 'meteociel': 'Meteociel'
             }
             
@@ -289,12 +260,11 @@ class PolymarketWeatherBot:
                 'weather_com': 'o',
                 'pws1': 'v',
                 'pws2': 'v',
-                'aemet': 'o',
                 'meteociel': 'v'
             }
             
             # Plotear el histórico de cada fuente
-            for source in ['weather_com', 'pws1', 'pws2', 'aemet', 'meteociel']:
+            for source in ['weather_com', 'pws1', 'pws2', 'meteociel']:
                 data = self.history_data[source]
                 
                 if len(data) > 0:
@@ -321,7 +291,7 @@ class PolymarketWeatherBot:
             
             ax.set_xlabel('Tiempo (UTC+1)', fontsize=10, fontweight='bold')
             ax.set_ylabel('Temperatura (°C)', fontsize=10, fontweight='bold')
-            ax.set_title('Tracking 5 Fuentes - Historial Completo', 
+            ax.set_title('Tracking 4 Fuentes - Historial Completo', 
                      fontsize=11, fontweight='bold', pad=8)
             ax.legend(loc='upper left', fontsize=8, framealpha=0.92, edgecolor='gray', frameon=True)
             
@@ -356,17 +326,22 @@ class PolymarketWeatherBot:
             # Márgenes optimizados para mejor ajuste en el dashboard
             fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.13)
             
+            # Guardar el gráfico
             plt.savefig(self.history_plot_path, dpi=100, bbox_inches='tight')
             plt.close()
             
-            print(f"📊 Gráfico histórico actualizado: {self.history_plot_path}", flush=True)
+            # Actualizar el timestamp del archivo para que el dashboard lo detecte
+            # (esto asegura que los cambios sean detectados incluso si el contenido es similar)
+            os.utime(self.history_plot_path, None)
+            
+           
         except Exception as e:
             print(f"❌ Error generando gráfico histórico: {e}", flush=True)
     
     
     
-    def print_status(self, weather_data, pws1_data, pws2_data, aemet_data, meteociel_data):
-        """Imprime el estado actual en tiempo real de las 5 APIs"""
+    def print_status(self, weather_data, pws1_data, pws2_data, meteociel_data):
+        """Imprime el estado actual en tiempo real de las 4 APIs"""
         now = datetime.now().strftime('%H:%M:%S')
         
         # Línea 1: Weather.com
@@ -395,15 +370,7 @@ class PolymarketWeatherBot:
         else:
             print(f"[{now}] IMADRI265 | ❌ Sin datos", flush=True)
         
-        # Línea 4: AEMET
-        if aemet_data:
-            temp = aemet_data.get('temperature')
-            temp_str = f"{temp:>6.2f}°C" if temp is not None else "   N/A"
-            print(f"[{now}] AEMET     | {temp_str}", flush=True)
-        else:
-            print(f"[{now}] AEMET  | ❌ Sin datos", flush=True)
-        
-        # Línea 5: Meteociel
+        # Línea 4: Meteociel
         if meteociel_data:
             temp = meteociel_data.get('temperature')
             timestamp = meteociel_data.get('timestamp', '')
@@ -411,29 +378,18 @@ class PolymarketWeatherBot:
             print(f"[{timestamp:>5}:00] Meteociel | {temp_str}", flush=True)
         else:
             print(f"[{now}] Meteociel   | ❌ Sin datos", flush=True)
-
-        # Línea 6: Open-Meteo (temperatura actual Barajas)
-        try:
-            om = get_current_temperature_barajas(max_retries=2, retry_delay=1.0)
-            t = om.get('current_temperature')
-            t_str = f"{t:>6.2f}°C" if t is not None else "   N/A"
-            print(f"[{now}] OpenMeteo| {t_str}", flush=True)
-        except Exception:
-            print(f"[{now}] OpenMeteo| ❌ Error", flush=True)
         
         print(flush=True)  # Línea en blanco para separar
     
     def monitor(self, interval=20):
         print(f"\n{'='*80}", flush=True)
-        print(f"MONITOREO 5 FUENTES - AEROPUERTO MADRID-BARAJAS", flush=True)
+        print(f"MONITOREO - AEROPUERTO MADRID-BARAJAS", flush=True)
         print(f"{'='*80}", flush=True)
         print(f"API 1: Weather.com (ICAO LEMD)", flush=True)
         print(f"API 2: PWS - Estación Personal IMADRI133", flush=True)
         print(f"API 3: PWS - Estación Personal IMADRI265", flush=True)
-        print(f"API 4: AEMET OpenData (Oficial Gobierno España - Estación 3129)", flush=True)
-        print(f"API 5: Meteociel (Web Scraping - Tiempo Real)", flush=True)
+        print(f"API 4: Meteociel ", flush=True)
         print(f"Intervalo: {interval} segundos\n", flush=True)
-        print(f"Gráfico histórico: {self.history_plot_path}", flush=True)
         print(f"{'='*80}\n", flush=True)
         
         try:
@@ -443,7 +399,6 @@ class PolymarketWeatherBot:
                 weather_data   = self.get_weather_com_temperature()
                 pws1_data      = self.get_pws_temperature(self.params_pws1)
                 pws2_data      = self.get_pws_temperature(self.params_pws2)
-                aemet_data     = self.get_aemet_temperature()
                 meteociel_data = self.get_meteociel_temperature()
                 
                 # Actualizar últimos datos
@@ -456,9 +411,6 @@ class PolymarketWeatherBot:
                 if pws2_data:
                     self.update_latest_data('pws2', pws2_data.get('temperature'))
                     self.add_to_history('pws2', pws2_data.get('temperature'))
-                if aemet_data:
-                    self.update_latest_data('aemet', aemet_data.get('temperature'))
-                    self.add_to_history('aemet', aemet_data.get('temperature'))
                 if meteociel_data:
                     # Usar el timestamp de Meteociel si está disponible
                     self.update_latest_data('meteociel', 
@@ -468,11 +420,13 @@ class PolymarketWeatherBot:
                                       meteociel_data.get('temperature'),
                                       meteociel_data.get('timestamp'))
                 
-                # Generar gráfico histórico cada actualización
+                # Primero imprimir los datos en la terminal
+                self.print_status(weather_data, pws1_data, pws2_data, meteociel_data)
+                print(f"\n{'='*80}", flush=True)
+                
+                # Luego generar el gráfico (así el dashboard lo detecta después de ver los datos)
                 self.generate_history_plot()
                 
-                self.print_status(weather_data, pws1_data, pws2_data, aemet_data, meteociel_data)
-                print(f"\n{'='*80}", flush=True)
                 time.sleep(interval)
                 
         except KeyboardInterrupt:

@@ -10,28 +10,24 @@ Layout:
 """
 
 import tkinter as tk
-from tkinter import ttk, font
+from tkinter import ttk
 import threading
 import subprocess
 import queue
 import os
 import sys
-import time
 from datetime import datetime, timedelta
 from PIL import Image, ImageTk
 import requests
 import re
-import io
 import matplotlib
 matplotlib.use('Agg')  # Sin ventana, renderizar en memoria
-import matplotlib.pyplot as plt
 import matplotlib.figure as mfigure
 import matplotlib.ticker as ticker
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 # ─── Rutas ───────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-SAT_DIR    = os.path.join(BASE_DIR, "satellite_images")
 
 SAT_TYPES = [
     ("infrarrojo_sp",  "satellite_images/infrarrojo_sp/infrarrojo_sp_latest.png",   "Infrarrojo España"),
@@ -53,75 +49,35 @@ log_queue = queue.Queue()
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_temp_data_from_meteociel(date, custom_month=None):
-    """Extrae datos de temperatura del HTML de Meteociel (lógica de vstemperaturas.py)"""
+    """Extrae datos de temperatura del HTML de Meteociel"""
     base_url = "https://www.meteociel.fr/temps-reel/obs_villes.php"
     code     = "8221"
     headers  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     month = custom_month if custom_month is not None else 2
     url = f"{base_url}?code2={code}&jour2={date.day}&mois2={month}&annee2={date.year}"
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.encoding = 'ISO-8859-1'
-        if response.status_code != 200:
-            return {}
-
-        pattern = r"src=['\"]//static\.meteociel\.fr/cartes_obs/graphe2\.php\?type=0&([^'\"]+)['\"]"
-        match   = re.search(pattern, response.text)
-        if not match:
-            return {}
-
-        params_str  = match.group(1)
-        data_pattern = r'data([\d.]+)=([\d.-]+)'
-        matches      = re.findall(data_pattern, params_str)
-        if not matches:
-            return {}
-
-        temp_data = {}
-        for hour_str, temp_str in matches:
-            hour_utc  = float(hour_str)
-            temp      = float(temp_str)
-            hour_local = (hour_utc + 1) % 24   # UTC+1
-            temp_data[hour_local] = temp
-        return temp_data
-    except Exception:
+    response = requests.get(url, headers=headers, timeout=15)
+    response.encoding = 'ISO-8859-1'
+    if response.status_code != 200:
         return {}
 
-
-def get_custom_day_data(day, month, year):
-    """Obtiene datos de un día específico"""
-    base_url = "https://www.meteociel.fr/temps-reel/obs_villes.php"
-    code     = "8221"
-    headers  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url = f"{base_url}?code2={code}&jour2={day}&mois2={month}&annee2={year}"
-
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.encoding = 'ISO-8859-1'
-        if response.status_code != 200:
-            return {}
-
-        pattern = r"src=['\"]//static\.meteociel\.fr/cartes_obs/graphe2\.php\?type=0&([^'\"]+)['\"]"
-        match   = re.search(pattern, response.text)
-        if not match:
-            return {}
-
-        params_str  = match.group(1)
-        data_pattern = r'data([\d.]+)=([\d.-]+)'
-        matches      = re.findall(data_pattern, params_str)
-        if not matches:
-            return {}
-
-        temp_data = {}
-        for hour_str, temp_str in matches:
-            hour_utc  = float(hour_str)
-            temp      = float(temp_str)
-            hour_local = (hour_utc + 1) % 24   # UTC+1
-            temp_data[hour_local] = temp
-        return temp_data
-    except Exception:
+    pattern = r"src=['\"]//static\.meteociel\.fr/cartes_obs/graphe2\.php\?type=0&([^'\"]+)['\"]"
+    match   = re.search(pattern, response.text)
+    if not match:
         return {}
 
+    params_str  = match.group(1)
+    data_pattern = r'data([\d.]+)=([\d.-]+)'
+    matches      = re.findall(data_pattern, params_str)
+    if not matches:
+        return {}
+
+    temp_data = {}
+    for hour_str, temp_str in matches:
+        hour_utc  = float(hour_str)
+        temp      = float(temp_str)
+        temp_data[hour_utc] = temp
+    return temp_data
 
 def build_temp_figure(width_px, height_px, custom_day=None, custom_month=None):
     """Genera la figura matplotlib de comparación de temperaturas y la devuelve como PIL Image."""
@@ -130,7 +86,12 @@ def build_temp_figure(width_px, height_px, custom_day=None, custom_month=None):
 
     today_data     = get_temp_data_from_meteociel(today)
     yesterday_data = get_temp_data_from_meteociel(yesterday)
-    custom_data    = get_custom_day_data(custom_day, custom_month, today.year) if custom_day and custom_month else {}
+    
+    # Obtener datos del día personalizado si se proporciona
+    custom_data = {}
+    if custom_day and custom_month:
+        custom_date = datetime(today.year, custom_month, custom_day)
+        custom_data = get_temp_data_from_meteociel(custom_date, custom_month)
 
     dpi = 96
     fig = mfigure.Figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
@@ -159,7 +120,7 @@ def build_temp_figure(width_px, height_px, custom_day=None, custom_month=None):
         ax.plot(h, t, 'o-', color='#9B59B6', linewidth=2.5, markersize=5,
                 label=f'Día {custom_day:02d}/{custom_month:02d} ({len(t)} pts)', alpha=0.85)
 
-    ax.set_xlabel('Hora (Madrid UTC+1)', fontsize=9)
+    ax.set_xlabel('Hora (UTC)', fontsize=9)
     ax.set_ylabel('Temperatura (°C)', fontsize=9)
     title_text = f'VS Temperaturas - Barajas\nAyer vs Hoy'
     if custom_day and custom_month:
@@ -189,7 +150,7 @@ def build_temp_figure(width_px, height_px, custom_day=None, custom_month=None):
     canvas.draw()
     buf = canvas.buffer_rgba()
     pil_img = Image.frombytes('RGBA', canvas.get_width_height(), buf)
-    plt.close(fig)
+    fig.clear()
     return pil_img
 
 
@@ -233,17 +194,24 @@ class Dashboard(tk.Tk):
         PANEL_BG  = "#181825"
         BORDER    = "#45475a"
 
-        # ── fila superior (temperatura | satélite) ──
-        top_frame = tk.Frame(self, bg=BG)
-        top_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(8, 4))
-        top_frame.columnconfigure(0, weight=1)
-        top_frame.columnconfigure(1, weight=1)
-        top_frame.rowconfigure(0, weight=1)
+        # ── PanedWindow vertical principal (gráficos | terminal) ──
+        # Permite cambiar tamaño entre los gráficos y la terminal
+        main_paned = tk.PanedWindow(self, orient="vertical",
+                                    bg=BG, sashwidth=5,
+                                    sashpad=3, handlesize=12)
+        main_paned.pack(fill=tk.BOTH, expand=True, padx=8, pady=(8, 8))
+
+        # ── PanedWindow horizontal superior (temperatura | satélite) ──
+        # Permite arrastrabilidad entre paneles izquierdo y derecho
+        top_paned = tk.PanedWindow(main_paned, orient="horizontal", 
+                                   bg=BG, sashwidth=5, 
+                                   sashpad=3, handlesize=12)
+        main_paned.add(top_paned, height=500)
 
         # Panel izquierdo: VS TEMPERATURAS
-        left_panel = tk.Frame(top_frame, bg=PANEL_BG, relief=tk.FLAT,
+        left_panel = tk.Frame(top_paned, bg=PANEL_BG, relief=tk.FLAT,
                               highlightbackground=BORDER, highlightthickness=1)
-        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        top_paned.add(left_panel, width=700)
         self.left_panel = left_panel  # guardar referencia para medir tamaño
 
         # Barra de título con controles y navegación
@@ -311,9 +279,9 @@ class Dashboard(tk.Tk):
         self.temp_status.pack(pady=(0, 4))
 
         # Panel derecho: IMÁGENES SATÉLITE
-        right_panel = tk.Frame(top_frame, bg=PANEL_BG, relief=tk.FLAT,
+        right_panel = tk.Frame(top_paned, bg=PANEL_BG, relief=tk.FLAT,
                                highlightbackground=BORDER, highlightthickness=1)
-        right_panel.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        top_paned.add(right_panel, width=600)
         self.right_panel = right_panel  # guardar referencia para medir tamaño
 
         # Barra de navegación satélite
@@ -342,10 +310,10 @@ class Dashboard(tk.Tk):
                                    bg=PANEL_BG, fg="#6c7086", font=("Arial", 8))
         self.sat_status.pack(pady=(0, 4))
 
-        # ── fila inferior: TERMINAL ──
-        term_frame = tk.Frame(self, bg=PANEL_BG,
+        # ── fila inferior: TERMINAL (en PanedWindow vertical) ──
+        term_frame = tk.Frame(main_paned, bg=PANEL_BG,
                               highlightbackground=BORDER, highlightthickness=1)
-        term_frame.pack(fill=tk.BOTH, expand=False, padx=8, pady=(4, 8))
+        main_paned.add(term_frame, height=150)
 
         tk.Label(term_frame, text="TERMINAL — polymarket_bot",
                  bg=PANEL_BG, fg=TITLE_FG,
@@ -373,6 +341,27 @@ class Dashboard(tk.Tk):
         self.terminal.tag_config("error", foreground="#f38ba8")
         self.terminal.tag_config("info",  foreground="#89b4fa")
         self.terminal.tag_config("warn",  foreground="#fab387")
+        
+        # Evento de redimensionamiento para refrescar gráficos
+        self.bind("<Configure>", self._on_window_configure)
+
+    def _on_window_configure(self, event=None):
+        """Maneja el redimensionamiento de la ventana y refresa los gráficos."""
+        # Cancelar job previo si existe
+        if self._resize_job:
+            self.after_cancel(self._resize_job)
+        
+        # Programar un refresh con delay (evita múltiples refreshes mientras se arrastra)
+        self._resize_job = self.after(500, self._refresh_on_resize)
+    
+    def _refresh_on_resize(self):
+        """Refresa los gráficos cuando la ventana se redimensiona."""
+        self._resize_job = None
+        if self._temp_graph_index == 0:
+            self._do_temp_refresh_async()
+        else:
+            self._load_temperature_plot()
+        self._refresh_satellite_display()
 
     # ── Satélite ──────────────────────────────────────────────────────────────
 
@@ -395,24 +384,21 @@ class Dashboard(tk.Tk):
             self.sat_canvas.config(image='', text="Sin imagen", fg="#f38ba8")
             return
 
-        try:
-            # Usar el panel como referencia, no el Label (evita bucle de crecimiento)
-            w = self.right_panel.winfo_width()  - 16
-            h = self.right_panel.winfo_height() - 70
-            if w < 50: w = 480
-            if h < 50: h = 380
+        # Usar el panel como referencia, no el Label (evita bucle de crecimiento)
+        w = self.right_panel.winfo_width()  - 16
+        h = self.right_panel.winfo_height() - 70
+        if w < 50: w = 480
+        if h < 50: h = 380
 
-            img   = Image.open(full_path).convert("RGB")
-            img   = img.resize((w, h), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
+        img   = Image.open(full_path).convert("RGB")
+        img   = img.resize((w, h), Image.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
 
-            self._sat_photo = photo
-            self.sat_canvas.config(image=photo, text="")
+        self._sat_photo = photo
+        self.sat_canvas.config(image=photo, text="")
 
-            mtime = datetime.fromtimestamp(os.path.getmtime(full_path))
-            self.sat_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(full_path)//1024} KB")
-        except Exception as e:
-            self.sat_status.config(text=f"❌ Error: {e}")
+        mtime = datetime.fromtimestamp(os.path.getmtime(full_path))
+        self.sat_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(full_path)//1024} KB")
 
     # ── Temperaturas ──────────────────────────────────────────────────────────
 
@@ -443,12 +429,19 @@ class Dashboard(tk.Tk):
         """Carga el gráfico generado por polymarket_bot.py"""
         plot_path = os.path.join(BASE_DIR, "polymarket_graphs", "polymarket_temperature_history.png")
         
-        if not os.path.exists(plot_path):
-            self.temp_status.config(text="⚠️  Esperando generación del gráfico...")
-            self.temp_canvas.config(image='', text="Gráfico no disponible", fg="#f38ba8")
-            return
+        # Encontrar el archivo de gráfico y JSON más reciente
+        # Para esto buscamos los más recientes creados hoy u otro día si no hay de hoy.
+        graphs_dir = os.path.join(BASE_DIR, "polymarket_graphs")
+        import glob
         
-        try:
+        # Buscar el plot más reciente
+        plot_files = glob.glob(os.path.join(graphs_dir, "polymarket_temperature_history_*.png"))
+        if plot_files:
+            plot_path = max(plot_files, key=os.path.getmtime)
+        else:
+            plot_path = os.path.join(graphs_dir, "polymarket_temperature_history.png")
+        
+        if os.path.exists(plot_path):
             w = max(self.left_panel.winfo_width()  - 16, 560)
             h = max(self.left_panel.winfo_height() - 60, 380)
             
@@ -461,8 +454,9 @@ class Dashboard(tk.Tk):
             
             mtime = datetime.fromtimestamp(os.path.getmtime(plot_path))
             self.temp_status.config(text=f"Actualizado: {mtime.strftime('%H:%M:%S')}  |  {os.path.getsize(plot_path)//1024} KB")
-        except Exception as e:
-            self.temp_status.config(text=f"❌ Error: {e}")
+        else:
+            self.temp_status.config(text="⚠️  Gráfico no disponible", fg="#f38ba8")
+            self.temp_canvas.config(image='', text="Gráfico no disponible", fg="#f38ba8")
 
     def _on_custom_day_changed(self):
         """Callback cuando el usuario cambia el día/mes personalizado"""
@@ -471,18 +465,15 @@ class Dashboard(tk.Tk):
     def _do_temp_refresh_async(self):
         """Genera el gráfico en hilo aparte para no bloquear la UI."""
         def worker():
-            try:
-                w = max(self.left_panel.winfo_width()  - 16, 560)
-                h = max(self.left_panel.winfo_height() - 60, 380)
-                # Obtener valores actuales de día y mes
-                custom_day = self.custom_day.get()
-                custom_month = self.custom_month.get()
-                pil_img = build_temp_figure(w, h, custom_day, custom_month)
-                pil_img = pil_img.convert("RGB").resize((w, h), Image.LANCZOS)
-                photo   = ImageTk.PhotoImage(pil_img)
-                self.after(0, lambda: self._apply_temp_photo(photo))
-            except Exception as e:
-                self.after(0, lambda msg=str(e): self.temp_status.config(text=f"❌ {msg}"))
+            w = max(self.left_panel.winfo_width()  - 16, 560)
+            h = max(self.left_panel.winfo_height() - 60, 380)
+            # Obtener valores actuales de día y mes
+            custom_day = self.custom_day.get()
+            custom_month = self.custom_month.get()
+            pil_img = build_temp_figure(w, h, custom_day, custom_month)
+            pil_img = pil_img.convert("RGB").resize((w, h), Image.LANCZOS)
+            photo   = ImageTk.PhotoImage(pil_img)
+            self.after(0, lambda: self._apply_temp_photo(photo))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -508,10 +499,7 @@ class Dashboard(tk.Tk):
 
         self.terminal.insert(tk.END, text + "\n", tag)
 
-        # Limitar a 300 líneas para no crecer indefinidamente
-        lines = int(self.terminal.index('end-1c').split('.')[0])
-        if lines > 300:
-            self.terminal.delete('1.0', f'{lines - 300}.0')
+  
 
         self.terminal.see(tk.END)
         self.terminal.config(state=tk.DISABLED)
@@ -541,48 +529,42 @@ class Dashboard(tk.Tk):
         """Corre polymarket_bot.py como subprocess y captura su stdout."""
         script = os.path.join(BASE_DIR, "polymarket_bot.py")
         log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Iniciando polymarket_bot...")
-        try:
-            proc = subprocess.Popen(
-                [sys.executable, "-u", script],   # -u = unbuffered
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=0,                         # sin buffer
-                cwd=BASE_DIR,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            )
-            for line in iter(proc.stdout.readline, ''):
-                line = line.rstrip()
-                if line:
-                    log_queue.put(line)
-            proc.stdout.close()
-            proc.wait()
-            log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  polymarket_bot terminó (código {proc.returncode})")
-        except Exception as e:
-            log_queue.put(f"❌ Error ejecutando polymarket_bot: {e}")
+        proc = subprocess.Popen(
+            [sys.executable, "-u", script],   # -u = unbuffered
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=0,                         # sin buffer
+            cwd=BASE_DIR,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        for line in iter(proc.stdout.readline, ''):
+            line = line.rstrip()
+            if line:
+                log_queue.put(line)
+        proc.stdout.close()
+        proc.wait()
+        log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  polymarket_bot terminó (código {proc.returncode})")
 
     def _run_satellite_downloader(self):
         """Corre satellite_images.py como subprocess y captura su stdout."""
         script = os.path.join(BASE_DIR, "satellite_images.py")
         log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] 🛰️  Iniciando satellite_images...")
-        try:
-            proc = subprocess.Popen(
-                [sys.executable, script],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                cwd=BASE_DIR,
-            )
-            for line in iter(proc.stdout.readline, ''):
-                line = line.rstrip()
-                if line:
-                    log_queue.put(line)
-            proc.stdout.close()
-            proc.wait()
-            log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  satellite_images terminó (código {proc.returncode})")
-        except Exception as e:
-            log_queue.put(f"❌ Error ejecutando satellite_images: {e}")
+        proc = subprocess.Popen(
+            [sys.executable, script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=BASE_DIR,
+        )
+        for line in iter(proc.stdout.readline, ''):
+            line = line.rstrip()
+            if line:
+                log_queue.put(line)
+        proc.stdout.close()
+        proc.wait()
+        log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  satellite_images terminó (código {proc.returncode})")
 
     # ── Refresh periódico ─────────────────────────────────────────────────────
 
@@ -598,25 +580,38 @@ class Dashboard(tk.Tk):
             self._do_temp_refresh_async()
         else:
             self._load_temperature_plot()
-        
-        self.after(20_000, self._schedule_temp_refresh)   # cada 20 segundos
+
+        self.after(5_000, self._schedule_temp_refresh)   # cada 5 segundos
 
     def _schedule_refresh(self):
         """Arranca los dos ciclos de refresco independientes."""
         self._schedule_sat_refresh()
         self._schedule_temp_refresh()
 
+    def _check_plot_update(self):
+        """Revisa periódicamente si el gráfico ha sido actualizado e intenta recargarlo."""
+        graphs_dir = os.path.join(BASE_DIR, "polymarket_graphs")
+        import glob
+        plot_files = glob.glob(os.path.join(graphs_dir, "polymarket_temperature_history_*.png"))
+        if plot_files:
+            plot_path = max(plot_files, key=os.path.getmtime)
+        else:
+            plot_path = os.path.join(graphs_dir, "polymarket_temperature_history.png")
+
+        try:
+            if os.path.exists(plot_path):
+                mod_time = os.path.getmtime(plot_path)
+                # Comparar con el tiempo de modificación registrado
+                if not hasattr(self, "_last_plot_mod_time") or mod_time > self._last_plot_mod_time:
+                    self._last_plot_mod_time = mod_time
+                    self._load_temperature_plot()
+        except Exception as e:
+            log_queue.put(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error al verificar actualización de gráfico: {e}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    # Verificar dependencias
-    try:
-        from PIL import Image
-    except ImportError:
-        print("❌ Falta Pillow: pip install Pillow")
-        sys.exit(1)
-
     app = Dashboard()
     app.mainloop()
 

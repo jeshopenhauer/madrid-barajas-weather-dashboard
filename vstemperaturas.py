@@ -93,14 +93,11 @@ class TemperatureComparison:
                 return {}
             
             # Convertir a diccionario {hora: temperatura}
-            # IMPORTANTE: Convertir de UTC a hora local Madrid (UTC+1)
             temp_data = {}
             for hour_str, temp_str in matches:
                 hour_utc = float(hour_str)
                 temp = float(temp_str)
-                # Sumar 1 hora para convertir de UTC a Madrid (UTC+1)
-                hour_local = (hour_utc + 1) % 24
-                temp_data[hour_local] = temp
+                temp_data[hour_utc] = temp
             
             print(f"✅ Extraídos {len(temp_data)} puntos de datos de {date_label}")
             return temp_data
@@ -189,7 +186,7 @@ class TemperatureComparison:
                         label=f'Día {self.custom_day:02d}/{self.custom_month:02d} ({len(temps_custom)} mediciones)', alpha=0.8)
         
         # Configurar el gráfico
-        self.ax.set_xlabel('Hora del día (Madrid - UTC+1)', fontsize=13, fontweight='bold')
+        self.ax.set_xlabel('Hora del día (UTC)', fontsize=13, fontweight='bold')
         self.ax.set_ylabel('Temperatura (°C)', fontsize=13, fontweight='bold')
         
         today = datetime.now()
