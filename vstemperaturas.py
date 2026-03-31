@@ -14,7 +14,7 @@ import sys
 # ═══════════════════════════════════════════════════════════════════════════
 # 🔧 CONFIGURACIÓN - Cambiar estas variables según necesites
 # ═══════════════════════════════════════════════════════════════════════════
-CUSTOM_DAY = 24        # Día específico a comparar (ej: 24 para el día 24 de marzo)
+CUSTOM_DAY = 30        # Día específico a comparar (ej: 24 para el día 24 de marzo)
 CUSTOM_MONTH = 2       # Mes Meteociel: 2=marzo, 3=abril (siempre el mes actual en formato Meteociel)
 # ═══════════════════════════════════════════════════════════════════════════
 

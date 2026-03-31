@@ -54,7 +54,9 @@ def get_temp_data_from_meteociel(date, custom_month=None):
     code     = "8221"
     headers  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     month = custom_month if custom_month is not None else 2
-    url = f"{base_url}?code2={code}&jour2={date.day}&mois2={month}&annee2={date.year}"
+    # Convertir de formato normal (1-12) a formato Meteociel (0-11)
+    meteociel_month = month - 1 if custom_month is not None else month
+    url = f"{base_url}?code2={code}&jour2={date.day}&mois2={meteociel_month}&annee2={date.year}"
 
     response = requests.get(url, headers=headers, timeout=15)
     response.encoding = 'ISO-8859-1'
@@ -176,7 +178,7 @@ class Dashboard(tk.Tk):
         
         # Variables para día de comparación personalizado
         self.custom_day   = tk.IntVar(value=24)   # Día a comparar
-        self.custom_month = tk.IntVar(value=2)    # Mes en formato Meteociel
+        self.custom_month = tk.IntVar(value=3)    # Mes en formato normal (1-12)
         
         # Índice para navegación entre gráficos de temperatura
         self._temp_graph_index = 0  # 0=VS Temperaturas, 1=Temperature Plot (polymarket)
