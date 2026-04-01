@@ -53,9 +53,16 @@ def get_temp_data_from_meteociel(date, custom_month=None):
     base_url = "https://www.meteociel.fr/temps-reel/obs_villes.php"
     code     = "8221"
     headers  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    month = custom_month if custom_month is not None else 2
-    # Convertir de formato normal (1-12) a formato Meteociel (0-11)
-    meteociel_month = month - 1 if custom_month is not None else month
+    
+    # Calcular el mes de Meteociel automáticamente
+    # Meteociel usa formato 0-11: mois2=0 (enero), mois2=1 (febrero), ..., mois2=11 (diciembre)
+    if custom_month is not None:
+        # custom_month viene en formato normal (1-12), convertir a formato Meteociel (0-11)
+        meteociel_month = custom_month - 1
+    else:
+        # Usar el mes de la fecha (restar 1 para formato Meteociel)
+        meteociel_month = date.month - 1
+    
     url = f"{base_url}?code2={code}&jour2={date.day}&mois2={meteociel_month}&annee2={date.year}"
 
     response = requests.get(url, headers=headers, timeout=15)

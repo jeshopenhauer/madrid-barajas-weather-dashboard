@@ -47,11 +47,18 @@ class TemperatureComparison:
         self.fig, self.ax = plt.subplots(figsize=(15, 8))
     
     def get_url_for_date(self, date, custom_month=None):
-        """Genera la URL para una fecha específica"""
-        # NOTA: Meteociel tiene los datos en mois2=2 (febrero) aunque estemos en marzo
-        # Esto es una peculiaridad de su sistema
-        # A partir de abril probablemente sea mois2=3
-        month = custom_month if custom_month is not None else 2
+        """
+        Genera la URL para una fecha específica
+        Calcula automáticamente el mes de Meteociel (mois2) basándose en la fecha
+        Meteociel usa formato 0-11: mois2=0 (enero), mois2=1 (febrero), ..., mois2=11 (diciembre)
+        """
+        if custom_month is not None:
+            # custom_month viene en formato normal (1-12), convertir a formato Meteociel (0-11)
+            month = custom_month - 1
+        else:
+            # Usar el mes de la fecha (restar 1 para formato Meteociel)
+            month = date.month - 1
+        
         return f"{self.base_url}?code2={self.code}&jour2={date.day}&mois2={month}&annee2={date.year}"
     
     def get_url_for_custom_day(self, day, month, year):
