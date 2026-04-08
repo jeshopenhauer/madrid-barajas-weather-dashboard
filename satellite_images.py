@@ -131,31 +131,12 @@ class SatelliteImageDownloader:
         return success_count
     
     def run(self, update_interval=300):
-        """
-        Ejecuta el descargador con actualización automática
-        
-        Args:
-            update_interval: Segundos entre descargas (default: 300 = 5 minutos)
-        """
-        print(f"\n{'='*80}")
-        print(f"🛰️  DESCARGADOR DE IMÁGENES DE SATÉLITE - METEOCIEL")
-        print(f"{'='*80}")
-        print(f"Regiones: España/Portugal + Europa")
-        print(f"Satélite: MTG Meteosat12 (Tercera generación)")
-        print(f"Directorio: {os.path.abspath(self.base_dir)}/")
-        print(f"{'='*80}")
-        print(f"\nTipos de imágenes (8 canales):")
-        for sat_type, info in self.satellite_types.items():
-            print(f"  • {info['description']}")
-        print(f"{'='*80}\n")
         
         # Primera descarga
         self.download_all_images()
         
         print(f"🔄 Actualizando cada {update_interval} segundos ({update_interval//60} minutos)")
-        print(f"� Solo se guarda la última imagen de cada tipo (se sobrescribe)")
-        print(f"❌ Presiona Ctrl+C para detener\n")
-        print(f"{'='*80}\n")
+       
         
         iteration = 0
         
@@ -177,8 +158,7 @@ class SatelliteImageDownloader:
 
 def main():
     """Función principal"""
-    print("🚀 Iniciando descargador de imágenes de satélite...")
-    print("🛰️  Meteociel - MTG Meteosat12\n")
+    print("Meteociel - MTG Meteosat12\n")
     
     try:
         downloader = SatelliteImageDownloader(base_dir="satellite_images")

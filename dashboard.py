@@ -578,9 +578,9 @@ class Dashboard(tk.Tk):
     # ── Refresh periódico ─────────────────────────────────────────────────────
 
     def _schedule_sat_refresh(self):
-        """Refresca imágenes satélite cada 5 minutos."""
+        """Refresca imágenes satélite cada 15 minutos."""
         self._refresh_satellite_display()
-        self.after(600_000, self._schedule_sat_refresh)   # cada 10 minutos
+        self.after(900_000, self._schedule_sat_refresh)   # cada 15 minutos
 
     def _schedule_temp_refresh(self):
         """Refresca la gráfica de temperatura cada 20 segundos."""
