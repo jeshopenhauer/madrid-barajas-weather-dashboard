@@ -5,6 +5,7 @@ Bot de Trading para Polymarket - VERSIÓN OPTIMIZADA
 
 import requests
 import json
+import re
 from datetime import datetime, timedelta
 import time
 import sys
@@ -35,14 +36,16 @@ class PolymarketWeatherBot:
             "icaoCode": "LEMD",
             "units": "m",
             "language": "es-ES",
-            "format": "json"
+            "format": "json",
+            
         }
         
         self.weather_v1_url = "https://api.weather.com/v1/location/LEMD:9:ES/observations.json"
         self.weather_v1_params = {
             "apiKey": self.api_key,
             "units": "m",
-            "language": "es-ES"
+            "language": "es-ES",
+            
         }
         
         self.weather_hist_url = "https://api.weather.com/v1/location/LEMD:9:ES/observations/historical.json"
@@ -68,6 +71,8 @@ class PolymarketWeatherBot:
         }
         
         self.meteociel_url = "https://www.meteociel.fr/temps-reel/obs_villes.php?code2=8221"
+
+        self.avwx_token = "MF_MQHY-xWLmV7Hwyccc_jh7H9q10cvRAFJHSLhRyvQ"
         
         self.graphs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "polymarket_graphs")
         os.makedirs(self.graphs_dir, exist_ok=True)
@@ -141,6 +146,46 @@ class PolymarketWeatherBot:
         except:
             return None
     
+    @staticmethod
+    def _metar_time(raw):
+        if raw:
+            m = re.search(r'\b(\d{6}Z)\b', raw)
+            if m:
+                return m.group(1)
+        return "N/A"
+
+    def get_temp_aviationweather(self):
+        try:
+            r = self.session.get(
+                "https://aviationweather.gov/api/data/metar",
+                params={"ids": "LEMD", "format": "json"},
+                timeout=5
+            )
+            r.raise_for_status()
+            data = r.json()
+            if data:
+                raw = data[0].get("rawOb", "")
+                return {"temperature": data[0].get("temp"), "metar_time": self._metar_time(raw)}
+        except:
+            pass
+        return None
+
+    def get_temp_avwx(self):
+        try:
+            r = self.session.get(
+                "https://avwx.rest/api/metar/LEMD",
+                headers={"Authorization": self.avwx_token},
+                timeout=5
+            )
+            r.raise_for_status()
+            data = r.json()
+            temp_obj = data.get("temperature")
+            temp = temp_obj.get("value") if isinstance(temp_obj, dict) else temp_obj
+            return {"temperature": temp, "metar_time": self._metar_time(data.get("raw", ""))}
+        except:
+            pass
+        return None
+
     def get_meteociel_temperature(self):
         try:
             r = self.session.get(self.meteociel_url, timeout=5)
@@ -238,10 +283,10 @@ class PolymarketWeatherBot:
         except Exception as e:
             print(f"❌ Error gráfico: {e}", flush=True)
     
-    def print_status(self, weather_data, weather_v1_data, pws1_data, pws2_data, meteociel_data, weather_hist_data):
+    def print_status(self, weather_data, weather_v1_data, pws1_data, pws2_data, meteociel_data, weather_hist_data, metar_noaa=None, metar_avwx=None):
         now = datetime.now().strftime('%H:%M:%S')
         def fmt(data): return f"{data.get('temperature'):>6.2f}°C" if data and data.get('temperature') is not None else "   N/A"
-        
+
         print(f"[{now}] Weather v3 | {fmt(weather_data)}", flush=True)
         print(f"[{now}] Weather v1 | {fmt(weather_v1_data)}", flush=True)
         print(f"[{now}] {pws1_data.get('station_id', 'IMADRI133'):>9} | {fmt(pws1_data)}" if pws1_data else f"[{now}] IMADRI133 | ❌ Sin datos", flush=True)
@@ -255,11 +300,21 @@ class PolymarketWeatherBot:
             print(f"[{hist_time_str}:00] Histórico | {fmt(weather_hist_data)}  {count} registros", flush=True)
         else:
             print(f"[{now}] Histórico | ❌ Sin datos", flush=True)
+        if metar_noaa:
+            ts = metar_noaa.get('metar_time', 'N/A')
+            print(f"[{now}] AviationWx | {fmt(metar_noaa)}  {ts}", flush=True)
+        else:
+            print(f"[{now}] AviationWx | ❌ Sin datos", flush=True)
+        if metar_avwx:
+            ts = metar_avwx.get('metar_time', 'N/A')
+            print(f"[{now}] AVWX METAR | {fmt(metar_avwx)}  {ts}", flush=True)
+        else:
+            print(f"[{now}] AVWX METAR | ❌ Sin datos", flush=True)
         print(flush=True)
     
     def monitor(self, interval=20):
         print(f"\n{'='*80}\nMONITOREO - AEROPUERTO MADRID-BARAJAS (OPTIMIZADO)\n{'='*80}", flush=True)
-        print("API 1: Weather.com v3 (ICAO LEMD)\nAPI 2: Weather.com v1 (LEMD:9:ES)\nAPI 3: PWS IMADRI133\nAPI 4: PWS IMADRI265\nAPI 5: Meteociel\nAPI 6: Weather.com Histórico (último registro)", flush=True)
+        print("API 1: Weather.com v3 (ICAO LEMD)\nAPI 2: Weather.com v1 (LEMD:9:ES)\nAPI 3: PWS IMADRI133\nAPI 4: PWS IMADRI265\nAPI 5: Meteociel\nAPI 6: Weather.com Histórico (último registro)\nAPI 7: AviationWeather NOAA METAR\nAPI 8: AVWX METAR", flush=True)
         print(f"Intervalo: {interval}s\n{'='*80}\n", flush=True)
         
         try:
@@ -270,16 +325,18 @@ class PolymarketWeatherBot:
                 pws2_data = self.get_pws_temperature(self.params_pws2)
                 meteociel_data = self.get_meteociel_temperature()
                 weather_hist_data = self.get_weather_historical_last()
-                
-                for src, data in [('weather_com', weather_data), ('weather_v1', weather_v1_data), 
+                metar_noaa = self.get_temp_aviationweather()
+                metar_avwx = self.get_temp_avwx()
+
+                for src, data in [('weather_com', weather_data), ('weather_v1', weather_v1_data),
                                   ('pws1', pws1_data), ('pws2', pws2_data)]:
                     if data:
                         self.add_to_history(src, data.get('temperature'))
                 if meteociel_data:
                     self.add_to_history('meteociel', meteociel_data.get('temperature'), meteociel_data.get('timestamp'))
-                # NO añadir weather_hist_data al historial de gráficas
-                
-                self.print_status(weather_data, weather_v1_data, pws1_data, pws2_data, meteociel_data, weather_hist_data)
+                # NO añadir METAR ni histórico al historial de gráficas
+
+                self.print_status(weather_data, weather_v1_data, pws1_data, pws2_data, meteociel_data, weather_hist_data, metar_noaa, metar_avwx)
                 print(f"\n{'='*80}", flush=True)
                 self.generate_history_plot()
                 time.sleep(interval)
