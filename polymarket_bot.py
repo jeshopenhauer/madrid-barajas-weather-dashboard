@@ -156,18 +156,39 @@ class PolymarketWeatherBot:
 
     def get_temp_aviationweather(self):
         try:
+            # ✨ HFT: Cache buster con milisegundos para forzar datos frescos
+            cache_buster = int(time.time() * 1000)
+            params = {
+                "ids": "LEMD",
+                "format": "raw", # Formato texto plano (mucho más rápido que JSON)
+                "_": cache_buster
+            }
+            
+            # ✨ HFT: Timeout agresivo de 1.5s
             r = self.session.get(
                 "https://aviationweather.gov/api/data/metar",
-                params={"ids": "LEMD", "format": "json"},
-                timeout=5
+                params=params,
+                timeout=1.5
             )
             r.raise_for_status()
-            data = r.json()
-            if data:
-                raw = data[0].get("rawOb", "")
-                return {"temperature": data[0].get("temp"), "metar_time": self._metar_time(raw)}
+            metar_raw = r.text.strip()
+            
+            if metar_raw and "LEMD" in metar_raw:
+                # Extraer temperatura con Regex (busca el bloque tipo 25/08 o M02/M05)
+                temp_match = re.search(r'\b(M?\d{2})/(M?\d{2})?\b', metar_raw)
+                temp = None
+                if temp_match:
+                    temp_str = temp_match.group(1)
+                    # Convertir 'M' a negativo si hace bajo cero
+                    temp = float(temp_str.replace('M', '-'))
+                
+                return {
+                    "temperature": temp, 
+                    "metar_time": self._metar_time(metar_raw),
+                    "raw": metar_raw # Pasamos el raw para imprimirlo en la terminal
+                }
         except:
-            pass
+            pass # Si falla o tarda más de 1.5s, ignorar para no bloquear el bot
         return None
 
     def get_temp_avwx(self):
@@ -302,7 +323,9 @@ class PolymarketWeatherBot:
             print(f"[{now}] Histórico | ❌ Sin datos", flush=True)
         if metar_noaa:
             ts = metar_noaa.get('metar_time', 'N/A')
-            print(f"[{now}] AviationWx | {fmt(metar_noaa)}  {ts}", flush=True)
+            raw_str = metar_noaa.get('raw', '')
+            # Imprime con tu formato original, añadiendo el texto RAW al final
+            print(f"[{now}] AviationWx | {fmt(metar_noaa)}  {ts} | {raw_str}", flush=True)
         else:
             print(f"[{now}] AviationWx | ❌ Sin datos", flush=True)
         if metar_avwx:
